@@ -51,8 +51,7 @@ library(ggplot2)
 library(reshape2)
 library(RColorBrewer)
 library(Hmisc)
-library(fslr)
-library(bootES)
+library(devtools)
 library(neuRosim)
   # Function to be fixed in neuRosim
   stimfunction<-function (totaltime, onsets, durations, accuracy)
@@ -396,10 +395,14 @@ grid.arrange(levelplot,hist,ncol=2)
 #   * Construct CI in each voxel, around weighted average of ES, with normal approximation from Borenstein et al. (2009)
 #   * Check coverage in each voxel over all simulations
 
-# Reset seed
+## Reset seed
 set.seed(11121990)
 
-## Study specific simulation details
+####************####
+#### Global options
+####************####
+nstud <- 15
+nsub <- 15
 TR <- 2
 nscan <- 200
 total <- TR*nscan
@@ -412,13 +415,64 @@ effect <- list(1,1) 			                            ## Effect of 1 for designmatr
 DIM <- c(16,16,16)
 
 
-##########################################################################################
-### GENERATE DATA
+####************####
+#### Subject/Study specific simulation details
+####************####
+# Subject parameters
+TrueLoc1 <- c(4,4,4)
+TrueLoc2 <- c(10,10,10)
+TrueWhiteNoise <- 0.7
+TrueRadius <- 1
+locations1 <- locations2 <- weights <- radius <- c()
+
+COPE <- VARCOPE <- TMAP <- array(NA,dim=c(DIM,nsub))
+
+# Loop over nsub to get the weights and the locations
+for(s in 1:nsub){
+  # Random locations
+  loc.tmp1 <- TrueLoc1 + round(rnorm(3,0,2),0)
+    while(any(loc.tmp1<1)){
+      loc.tmp1 <- TrueLoc1 + round(rnorm(3,0,2),0)
+    }
+  loc.tmp2 <- TrueLoc2 + round(rnorm(3,0,2),0)
+    while(any(loc.tmp2>16)){
+      loc.tmp2 <- TrueLoc2 + round(rnorm(3,0,2),0)
+    }
+  locations1 <- rbind(locations1,loc.tmp1)
+  locations2 <- rbind(locations2,loc.tmp2)
+
+  # Radius
+  radius.tmp <- TrueRadius + sample(c(0,1),size=2)
+  radius <- rbind(radius,'rad' = radius.tmp)
+
+  # Random noise components
+  whiteNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
+  while(whiteNoise > 1 || whiteNoise < 0.5){
+    whiteNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
+  }
+  temporalNoise <- round((1-whiteNoise)/2 + rnorm(1,0,0.25),2)
+  while(temporalNoise > c(1-whiteNoise) || temporalNoise < 0){
+    temporalNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
+  }
+  spatialNoise <- 1-whiteNoise-temporalNoise
+
+  weights <- rbind(weights, c(whiteNoise, temporalNoise,0 ,0, 0, spatialNoise))
+  rm(loc.tmp1,loc.tmp2,whiteNoise,temporalNoise,spatialNoise)
+}
+
+# Study parameters
+SWEIGHTS <- SHEDGE <- SCOPE <- SVARCOPE <- STMAP <- array(NA,dim=c(DIM,nstud))
+
+
+
+####************####
+#### Design matrices
+####************####
 # Design Matrices via neuRosim:
-#     * We need three designs vectors:
-#     * The first two have an intercept so we can analyze the data later on.
-#        * These will be the two columns of the design matrix.
-#     * The third one is used to generate data.
+#     * We need three design vectors:
+#     * The first two have an intercept (needed for analysis).
+#        * These will be the two columns (1 -1 contrast) of the design matrix in the analysis.
+#     * The third one is used to generate data with a NULL effect.
 designC1 <- simprepTemporal(onsets = list(on1), durations = list(duration[[1]]),
                          hrf = "double-gamma", TR = TR, totaltime = total,
                          effectsize = list(effect[[1]]))
@@ -435,89 +489,134 @@ design.null <- simprepTemporal(regions = 2, onsets = onsets, durations = duratio
 x <- fmri.design(matrix(c(simTSfmri(designC1, nscan=nscan, TR=TR, noise="none"),
         simTSfmri(designC2, nscan=nscan, TR=TR, noise="none")),ncol=2),0)
 
-# Define two regions (which does nothing as there is no effect, )
-regions <- simprepSpatial(regions = 2, coord = list(c(4,4,4),c(10,10,10)), radius = list(c(1),c(1)), form ="cube", fading = 0)
-
-# Weighting structure: white, temporal and spatial noise.
-#   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
-w <- c(0.7, 0.15, 0, 0, 0, 0.15)
-# Base value
-base <- 5
-
-# Actual simulated data
-sim.data <-  simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
-             type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
 
 
-# 3D Gaussian Kernel over the 4D data
-fwhm <- 2
-sigma <- fwhm/(sqrt(8)*log(2))
-smoothint <- -round(2*sigma):round(2*sigma)
+####************####
+#### GENERATE DATA: INCLUDE STUDIES --> SUBJECTS
+####************####
 
-for(i in 1:nscan){
- sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
+# For loop over studies
+for(t in 1:nstud){
+  print(paste('------------------------- STUDY ', t,' -------------------------',sep=''))
+  # For loop over nsub
+  for(s in 1:nsub){
+    print(paste('At subject, ', s, sep=''))
+    coordinates <- list(c(locations1[s,]),c(locations2[s,]))
+    # Define two regions (which does nothing as there is no effect, )
+    regions <- simprepSpatial(regions = 2, coord = coordinates, radius = list(radius[s,1],radius[s,2]), form ="cube", fading = 0)
+      rm(coordinates)
+
+    # Weighting structure: white, temporal and spatial noise.
+    #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
+    w <- weights[s,]
+    # Base value
+    base <- 5
+
+    # Actual simulated data
+    sim.data <-  simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+                 type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+        rm(w)
+
+    # 3D Gaussian Kernel over the 4D data
+    fwhm <- 2
+    sigma <- fwhm/(sqrt(8)*log(2))
+    smoothint <- -round(2*sigma):round(2*sigma)
+
+    for(i in 1:nscan){
+     sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
+    }
+
+    # Reshape the data for fMRI analysis and make it the correct class
+    datafmri <- list(ttt=writeBin(c(sim.data), raw(),4), mask=array(1,dim=DIM), dim = c(DIM, nscan))
+    class(datafmri) <- "fmridata"
+      rm(sim.data)
+    ####************####
+    #### ANALYZE DATA
+    ####************####
+
+
+    # Fitting GLM model: estimated AR(1)-coefficients are used to whiten data, may produce warnings because data is pre-smoothed.
+    model <- fmri.lm(datafmri,x, actype = "accalc", keep="all",contrast=c(1,-1))
+
+    # Estimated contrast of parameter beta's from model
+    COPE.sub <- model$cbeta
+      COPE[,,,s] <- COPE.sub
+    VARCOPE.sub <- model$var
+      VARCOPE[,,,s] <- VARCOPE.sub
+    # Constructing t-map
+    TMAP.sub <- array(c(COPE.sub)/sqrt(c(VARCOPE.sub)), dim=c(DIM))
+      TMAP[,,,s] <- TMAP.sub
+
+      # Need a plot to check?
+      PLOT <- FALSE
+      if(isTRUE(PLOT)){
+        levelplot(TMAP[,,,1])
+        PVAL <- array(1-pt(TMAP,df=nscan-1),dim=DIM)
+        levelplot(PVAL[,,,1])
+        IDsign <- PVAL[,,,1] < 0.05
+        PVAL[IDsign] <- 1
+        PVAL[!IDsign] <- 0
+        levelplot(PVAL)
+      }
+      rm(COPE.sub,VARCOPE.sub,TMAP.sub)
+  }
+
+  ####************####
+  #### GROUP ANALYSIS
+  ####************####
+
+  # Group COPE (average)
+  GCOPE <- apply(COPE,c(1,2,3),mean)
+
+  # Now we will do the OLS estimation of the variance
+  GVARCOPE <- apply(COPE,c(1,2,3),var)
+
+  # TMAP
+  GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub-1))
+
+
+  ####************####
+  #### TRANSFORM TO ES
+  ####************####
+  # Transform to an ES using hedgeG function, for each study
+  HedgeG <- apply(matrix(GTMAP,ncol=1),1,FUN=hedgeG,N=nsub)
+  # Calculate variance of ES
+  VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
+  # Weights of this study
+  weigFix <- 1/VarianceHedgeG
+
+    # Put GCOPE, GVARCOPE, GTMAP, hedge's G and weights in vector
+    SCOPE[,,,t] <- GCOPE
+    SVARCOPE[,,,t] <- GVARCOPE
+    STMAP[,,,t] <- GTMAP
+    SHEDGE[,,,t] <- HedgeG
+    SWEIGHTS[,,,t] <- weigFix
+
+    rm(GCOPE,GVARCOPE,HedgeG,weigFix)
+    gc(verbose = FALSE)
 }
 
-# Reshape the data for fMRI analysis and make it the correct class
-datafmri <- list(ttt=writeBin(c(sim.data), raw(),4), mask=array(1,dim=DIM), dim = c(DIM, nscan))
-class(datafmri) <- "fmridata"
 
+# Re-format arrays
+SHEDGE.mat <- matrix(SHEDGE,ncol=nstud)
+SWEIGHTS.mat <- matrix(SWEIGHTS,ncol=nstud)
 
-##########################################################################################
-### ANALYZE DATA
-# Fitting GLM model: estimated AR(1)-coefficients are used to whiten data, may produce warnings because data is pre-smoothed.
-model <- fmri.lm(datafmri,x, actype = "accalc", keep="all",contrast=c(1,-1))
+# Now calculate weighted average.
+WeightedAvg <- (apply((SHEDGE.mat*SWEIGHTS.mat),1,sum))/(apply(SWEIGHTS.mat,1,sum))
 
-# Estimated contrast of parameter beta's from model
-COPE <- model$cbeta
-VARCOPE <- model$var
-# Constructing t-map
-TMAP <- array(c(COPE)/sqrt(c(VARCOPE)), dim=c(DIM))
+# Calculate variance of weighted average
+varWeightAvg <- 1/apply(SWEIGHTS.mat,1,sum)
 
-# Need a plot to check?
-PLOT <- TRUE
-if(isTRUE(PLOT)){
-  levelplot(TMAP)
-  PVAL <- array(1-pt(TMAP,df=nscan-1),dim=DIM)
-  levelplot(PVAL)
-  IDsign <- PVAL < 0.05
-  PVAL[IDsign] <- 1
-  PVAL[!IDsign] <- 0
-  levelplot(PVAL)
-}
-
-
-##########################################################################################
-### TRANSFORM TO ES
-# Transform to an ES using hedgeG function, for each study
-HedgeG <- apply(matrix(TMAP,ncol=1),1,FUN=hedgeG,N=nsub)
-# Calculate variance of ES
-VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
-# Weights of this study
-weigFix <- 1/VarianceHedgeG
-
-  # Put hedge's G and weights in vector
-  HedgeGStud[,s] <- HedgeG
-  weightsStud[,s] <- weigFix
-
-## Continue here by incorporating different subjects and studies (different weights, etc, for each subject/study).
+# Now calculate confidence intervals for weighted average based on assumption of normal distributed ES
+CI.upper.norm <- matrix(WeightedAvg,ncol=1) + (1.96 * sqrt(matrix(varWeightAvg,ncol=1)))
+CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,ncol=1)))
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+# Now check coverage and save into vector
+mean.coverage.norm[,i] <- ifelse(trueVal > CI.lower.norm & trueVal < CI.upper.norm, 1, 0)
 
 
 
