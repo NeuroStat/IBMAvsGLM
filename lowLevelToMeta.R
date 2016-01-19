@@ -120,8 +120,8 @@ on1 <- seq(1,total,40)
 on2 <- seq(20,total,40)
 onsets <- list(on1,on2)
 duration <- list(20,20)
-effect.null <- list(0,0)                              ## No effect
-effect <- list(1,1) 			                            ## Effect of 1 for designmatrix
+effect.acc <- list(3,3)                              ## No effect
+effect <- list(3,3) 			                            ## Effect of 1 for designmatrix
 DIM <- c(16,16,16)
 
 
@@ -191,9 +191,9 @@ designC2 <- simprepTemporal(onsets = list(on2), durations = list(duration[[2]]),
                         hrf = "double-gamma", TR = TR, totaltime = total,
                         effectsize = list(effect[[1]]))
 
-design.null <- simprepTemporal(regions = 2, onsets = onsets, durations = duration,
+design.acc <- simprepTemporal(regions = 2, onsets = onsets, durations = duration,
                          hrf = "double-gamma", TR = TR, totaltime = total,
-                         effectsize = effect.null)
+                         effectsize = effect.acc)
 
 # X-matrix in order to fit the model later on (combination of C1 and C2).
 x <- fmri.design(matrix(c(simTSfmri(designC1, nscan=nscan, TR=TR, noise="none"),
@@ -222,7 +222,7 @@ for(t in 1:nstud){
     base <- 5
 
     # Actual simulated data
-    sim.data <-  simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+    sim.data <-  simVOLfmri(design=design.acc, image=regions, base=base, dim=DIM, SNR=0.5,
                  type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
         rm(w)
 
@@ -328,14 +328,14 @@ CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,n
 ###############
 ##
 
-save(SCOPE, file=paste(wd,'/Results/SCOPE_',K,sep=''))
-save(SVARCOPE, file=paste(wd,'/Results/SVARCOPE_',K,sep=''))
-save(STMAP, file=paste(wd,'/Results/STMAP_',K,sep=''))
-save(SHEDGE, file=paste(wd,'/Results/SHEDGE_',K,sep=''))
-save(WeightedAvg, file=paste(wd,'/Results/WeightedAvg_',K,sep=''))
-save(varWeightAvg, file=paste(wd,'/Results/varWeightAvg_',K,sep=''))
-save(CI.upper.norm, file=paste(wd,'/Results/CI.upper.norm_',K,sep=''))
-save(CI.lower.norm, file=paste(wd,'/Results/CI.lower.norm_',K,sep=''))
+save(SCOPE, file=paste(wd,K,'/Results/SCOPE_',K,sep=''))
+save(SVARCOPE, file=paste(wd,K,'/Results/SVARCOPE_',K,sep=''))
+save(STMAP, file=paste(wd,K,'/Results/STMAP_',K,sep=''))
+save(SHEDGE, file=paste(wd,K,'/Results/SHEDGE_',K,sep=''))
+save(WeightedAvg, file=paste(wd,K,'/Results/WeightedAvg_',K,sep=''))
+save(varWeightAvg, file=paste(wd,K,'/Results/varWeightAvg_',K,sep=''))
+save(CI.upper.norm, file=paste(wd,K,'/Results/CI.upper.norm_',K,sep=''))
+save(CI.lower.norm, file=paste(wd,K,'/Results/CI.lower.norm_',K,sep=''))
 
 
 

@@ -38,6 +38,7 @@ set.seed(11121990)
 
 # Set WD
 wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit"
+DATAwd <- "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results"
 setwd(wd)
 
 
@@ -614,13 +615,71 @@ CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,n
 
 
 
+################### // ###################
+## This code now gets simulated on HPC ##
+################### // ###################
+nsim <- 500
+mean.coverage.norm <- array(NA,dim=c(prod(DIM),nsim))
+trueVal <- 0
 
-# Now check coverage and save into vector
-mean.coverage.norm[,i] <- ifelse(trueVal > CI.lower.norm & trueVal < CI.upper.norm, 1, 0)
+####************####
+#### Results
+####************####
+# Load in R objects and calculate coverage.
+for(i in 1:nsim){
+  # Load in CI.upper.norm and CI.lower.norm
+  load(paste(DATAwd,'/',i,'/CI.upper.norm_',i,sep=''))
+  load(paste(DATAwd,'/',i,'/CI.lower.norm_',i,sep=''))
+  # Calculate indicator for coverage and save into vector
+  mean.coverage.norm[,i] <- ifelse(trueVal > CI.lower.norm & trueVal < CI.upper.norm, 1, 0)
+  rm(CI.upper.norm,CI.lower.norm)
+}
+mean.coverage.norm
+dim(mean.coverage.norm)
+mean.coverage.norm.vox <- apply(mean.coverage.norm,1,mean);mean.coverage.norm.vox
+mean(mean.coverage.norm.vox)
+
+  # As this takes quit long, let us save this.
+  save(mean.coverage.norm, file=paste(wd,'/RObjects/',date,'-mean_coverage_norm_lowToMeta',sep=''))
+  # Load in object
+  load(paste(wd,'/RObjects/',date,'-mean_coverage_norm_lowToMeta',sep=''))
 
 
+####************####
+#### Plotting
+####************####
+levelplot(array(mean.coverage.norm.vox,dim=DIM))
+
+# Add histogram
+mean.coverage.norm.frame <- data.frame('coverage' = matrix(mean.coverage.norm.vox,ncol=1))
+
+# Arrange in 1 frame
+levelplot <- levelplot(array(mean.coverage.norm.vox,dim=DIM),xlab='X',ylab='Y')
+hist <- ggplot(mean.coverage.norm.frame, aes(x=coverage)) + geom_histogram(binwidth=0.002225) +
+scale_x_continuous(name="") +
+geom_vline(xintercept=0.95,colour='red') +
+ggtitle(label='') +
+  theme(plot.title = element_text(lineheight=.6, face="bold"))
+
+grid.arrange(levelplot,hist,ncol=2,
+  main=textGrob(paste('Coverage for simulated data from first level to weighted mean average in 16x16x16 voxels. Mean = ', round(mean(mean.coverage.norm.vox),3),sep=''),
+  gp=gpar(cex=1.5),vjust=2))
 
 
+## Plotting the weighted averages
+# Load in R objects.
+mean.wAvg.norm <- array(NA,dim=c(prod(DIM),nsim))
+for(i in 1:nsim){
+  # Load in CI.upper.norm and CI.lower.norm
+  load(paste(DATAwd,'/',i,'/WeightedAvg_',i,sep=''))
+  mean.wAvg.norm[,i] <- WeightedAvg
+  rm(WeightedAvg)
+}
+
+mean.wAvg.norm.vox <- apply(mean.wAvg.norm,1,mean)
+mean.wAvg.norm.frame <- data.frame('wAvg' = matrix(mean.wAvg.norm.vox,ncol=1))
+ggplot(mean.wAvg.norm.frame, aes(x=wAvg)) + geom_histogram() +
+scale_x_continuous(name="")
 
 
 
