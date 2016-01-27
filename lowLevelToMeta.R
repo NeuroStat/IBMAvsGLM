@@ -1,5 +1,5 @@
 ####################
-#### TITLE:     Simulate null data from low subject level to meta-analysis. Calculate ES, CI and later on coverage based on the simulations.
+#### TITLE:     Simulate null data from low subject level to meta-analysis. Calculate ES, weighted average, CI and coverage based on the simulations.
 #### Contents:
 ####
 #### Source Files: HPC - Version
@@ -25,13 +25,13 @@
 ########################################
 ## CI for group maps after low level simulation of fMRI data using neuRosim.
 #   * 500 simulations
-#   * Create 16x16x16 null-images for N subjects and 15 studies.
+#   * Create 16x16x16 null-images for N subjects and K studies.
 #   * Each image is created using the same design.
 #   * No between study effects.
 #   * Pool each study with ordinary OLS pooling method: T-maps.
 #   * Transform each study to ES with formula used in FixRan study.
 #   * Aggregate studies using fixed effects meta-analysis.
-#   * Construct CI in each voxel, around weighted average of ES, with normal approximation from Borenstein et al. (2009)
+#   * Construct CI in each voxel.
 #   * Check coverage in each voxel over all simulations
 
 
@@ -49,9 +49,11 @@ gc(verbose = FALSE)
 input <- commandArgs(TRUE)
   # K'th simulation
   K <- as.numeric(as.character(input)[1]); cat(K, '\n')
+  # Which scenario
+  SCEN <- as.numeric(as.character(input)[2])
 
 # Set starting seed!!!!!!
-set.seed(1112*K)
+set.seed(80*K)
 
 # Set WD
 wd <- '/user/scratch/gent/gvo000/gvo00022/vsc40728/Simulation'
@@ -120,9 +122,61 @@ on1 <- seq(1,total,40)
 on2 <- seq(20,total,40)
 onsets <- list(on1,on2)
 duration <- list(20,20)
-effect.acc <- list(3,3)                              ## No effect
+effect.null <- list(0,0)                              ## No effect
 effect <- list(3,3) 			                            ## Effect of 1 for designmatrix
 DIM <- c(16,16,16)
+
+
+####************####
+#### Scenario specific simulation details
+####************####
+whiteNoise <- c(1,1,rev(seq(0.1,0.9,by=0.1)))
+
+whiteNoise <- list(
+  'S1' = c(1,0,0,0,0,0),
+  'S2' = c(1,0,0,0,0,0),
+  'S3' = c(0.84,0.05,0.02,0.02,0.02,0.05),
+  'S4' = c(0.64,0.15,0.02,0.02,0.02,0.15),
+  'S5' = c(0.45,0.25,0.02,0.02,0.02,0.25),
+  'S6' = c(0.24,0.35,0.02,0.02,0.02,0.35),
+  'S7' = c(0.04,0.45,0.02,0.02,0.02,0.45)
+  )
+
+
+
+TrueWeights <- c(0.9, 0.05, 0, 0, 0, 0.05)
+
+subjectfMRINoise <- function(TrueWeights,seed){
+  # Set seed
+  set.seed(seed)
+  # Small amount of noise to low-frequency, physiological and task related
+  LF <- phys <- task <- 0.02
+
+  # Bounds
+  UpperBound <- 0.94
+  UpperWhite <- TrueWeights[1] + 0.2
+  LowerBound <- 0
+  LowerWhite <- TrueWeights[1] - 0.2
+  # Start with white noise component
+  white <- round(TrueWeights[1] + rnorm(1, mean = 0, sd = 0.2),2)
+    # Now check if it is between the bounds
+    while(white > UpperWhite || white > UpperBound || white < LowerWhite|| white < LowerBound){
+      white <- round(TrueWeights[1] + rnorm(1, mean = 0, sd = 0.2),2)
+    }
+  # Now to temporal component: again create bounds
+  UpperTemporal <- 0.94-white
+  temporal <- round(TrueWeights[2] + rnorm(1, mean = 0, sd = 0.125),2)
+    # Now check if it is between the bounds
+    while(temporal > UpperTemporal || temporal > UpperBound || temporal < LowerBound){
+      temporal <- round(TrueWeights[2] + rnorm(1, mean = 0, sd = 0.125),2)
+    }
+  # Spatial noise
+  spatial <- 0.94 - white - temporal
+  return(c(white,temporal,LF,phys,task,spatial))
+}
+
+
+
 
 
 ####************####
@@ -131,7 +185,7 @@ DIM <- c(16,16,16)
 # Subject parameters
 TrueLoc1 <- c(4,4,4)
 TrueLoc2 <- c(10,10,10)
-TrueWhiteNoise <- 0.7
+TrueWhiteNoise <- whiteNoise[SCEN]
 TrueRadius <- 1
 locations1 <- locations2 <- weights <- radius <- c()
 
@@ -191,9 +245,9 @@ designC2 <- simprepTemporal(onsets = list(on2), durations = list(duration[[2]]),
                         hrf = "double-gamma", TR = TR, totaltime = total,
                         effectsize = list(effect[[1]]))
 
-design.acc <- simprepTemporal(regions = 2, onsets = onsets, durations = duration,
+design.null <- simprepTemporal(regions = 2, onsets = onsets, durations = duration,
                          hrf = "double-gamma", TR = TR, totaltime = total,
-                         effectsize = effect.acc)
+                         effectsize = effect.null)
 
 # X-matrix in order to fit the model later on (combination of C1 and C2).
 x <- fmri.design(matrix(c(simTSfmri(designC1, nscan=nscan, TR=TR, noise="none"),
@@ -217,23 +271,24 @@ for(t in 1:nstud){
 
     # Weighting structure: white, temporal and spatial noise.
     #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
-    w <- weights[s,]
+    #w <- weights[s,]
+    w <- c(1,0,0,0,0,0)
     # Base value
     base <- 5
 
     # Actual simulated data
-    sim.data <-  simVOLfmri(design=design.acc, image=regions, base=base, dim=DIM, SNR=0.5,
+    sim.data <-  simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
                  type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
         rm(w)
 
     # 3D Gaussian Kernel over the 4D data
-    fwhm <- 2
-    sigma <- fwhm/(sqrt(8)*log(2))
-    smoothint <- -round(2*sigma):round(2*sigma)
+    # fwhm <- 2
+    # sigma <- fwhm/(sqrt(8)*log(2))
+    # smoothint <- -round(2*sigma):round(2*sigma)
 
-    for(i in 1:nscan){
-     sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
-    }
+    # for(i in 1:nscan){
+    #  sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
+    # }
 
     # Reshape the data for fMRI analysis and make it the correct class
     datafmri <- list(ttt=writeBin(c(sim.data), raw(),4), mask=array(1,dim=DIM), dim = c(DIM, nscan))
@@ -281,7 +336,7 @@ for(t in 1:nstud){
   GVARCOPE <- apply(COPE,c(1,2,3),var)
 
   # TMAP
-  GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub-1))
+  GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub))
 
 
   ####************####
@@ -328,14 +383,14 @@ CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,n
 ###############
 ##
 
-save(SCOPE, file=paste(wd,K,'/Results/SCOPE_',K,sep=''))
-save(SVARCOPE, file=paste(wd,K,'/Results/SVARCOPE_',K,sep=''))
-save(STMAP, file=paste(wd,K,'/Results/STMAP_',K,sep=''))
-save(SHEDGE, file=paste(wd,K,'/Results/SHEDGE_',K,sep=''))
-save(WeightedAvg, file=paste(wd,K,'/Results/WeightedAvg_',K,sep=''))
-save(varWeightAvg, file=paste(wd,K,'/Results/varWeightAvg_',K,sep=''))
-save(CI.upper.norm, file=paste(wd,K,'/Results/CI.upper.norm_',K,sep=''))
-save(CI.lower.norm, file=paste(wd,K,'/Results/CI.lower.norm_',K,sep=''))
+save(SCOPE, file=paste(wd,'/Results/',K,'/WNSmSCOPE_',K,sep=''))
+save(SVARCOPE, file=paste(wd,'/Results/',K,'/WNSmSVARCOPE_',K,sep=''))
+save(STMAP, file=paste(wd,'/Results/',K,'/WNSmSTMAP_',K,sep=''))
+save(SHEDGE, file=paste(wd,'/Results/',K,'/WNSmSHEDGE_',K,sep=''))
+save(WeightedAvg, file=paste(wd,'/Results/',K,'/WNSmWeightedAvg_',K,sep=''))
+save(varWeightAvg, file=paste(wd,'/Results/',K,'/WNSmvarWeightAvg_',K,sep=''))
+save(CI.upper.norm, file=paste(wd,'/Results/',K,'/WNSmCI.upper.norm_',K,sep=''))
+save(CI.lower.norm, file=paste(wd,'/Results/',K,'/WNSmCI.lower.norm_',K,sep=''))
 
 
 
