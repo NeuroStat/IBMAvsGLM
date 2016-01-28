@@ -24,14 +24,13 @@
 
 ########################################
 ## CI for group maps after low level simulation of fMRI data using neuRosim.
-#   * 500 simulations
 #   * Create 16x16x16 null-images for N subjects and K studies.
 #   * Each image is created using the same design.
 #   * No between study effects.
 #   * Pool each study with ordinary OLS pooling method: T-maps.
 #   * Transform each study to ES with formula used in FixRan study.
 #   * Aggregate studies using fixed effects meta-analysis.
-#   * Construct CI in each voxel.
+#   * Construct 3 types of CI in each voxel.
 #   * Check coverage in each voxel over all simulations
 
 
@@ -52,8 +51,9 @@ input <- commandArgs(TRUE)
   # Which scenario
   SCEN <- as.numeric(as.character(input)[2])
 
-# Set starting seed!!!!!!
-set.seed(80*K)
+# Set starting seed: it is the product of the amount of voxels, the number of studies and the number of subjects!
+starting.seed <- 36864*K
+set.seed(starting.seed)
 
 # Set WD
 wd <- '/user/scratch/gent/gvo000/gvo00022/vsc40728/Simulation'
@@ -72,36 +72,13 @@ library(RColorBrewer)
 library(Hmisc)
 library(devtools)
 library(neuRosim)
-  # Function to be fixed in neuRosim
-  stimfunction<-function (totaltime, onsets, durations, accuracy)
-{
-  if (max(onsets) > totaltime) {
-    stop("Mismatch between onsets and totaltime")
-  }
-  s <- rep(0, totaltime/accuracy)
-  os <- onsets/accuracy
-  dur <- durations/accuracy
-  if (length(durations) == 1) {
-    dur <- dur * rep(1, length(onsets))
-  }
-  else if (length(durations) != length(onsets)) {
-    stop("Mismatch between number of onsets and number of durations.")
-  }
-  for (i in (1:length(onsets))) {
-    if ((os[i] + dur[i]) <= totaltime/accuracy) {
-      s[c(os[i]:(os[i] + dur[i]-1))] <- 1
-    }
-    else {
-      s[c(os[i]:(totaltime/accuracy))] <- 1
-    }
-  }
-  return(s)
-}
 
 
 
-# Load in functions from FixRan study
-source_url('https://raw.githubusercontent.com/HBossier/FixRanStudyGit/master/Development/functions.R')
+# Load in functions from FixRan study: THIS HAS TO COME AFTER ALL LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
+source_url('https://raw.githubusercontent.com/HBossier/FixRanStudyGit/master/Development/functions.R',sha1='c4c3b98288ab8a9bdf0d081f2ace902d5cd13e18')
+
+
 
 
 ##
@@ -130,9 +107,7 @@ DIM <- c(16,16,16)
 ####************####
 #### Scenario specific simulation details
 ####************####
-whiteNoise <- c(1,1,rev(seq(0.1,0.9,by=0.1)))
-
-whiteNoise <- list(
+Noise <- list(
   'S1' = c(1,0,0,0,0,0),
   'S2' = c(1,0,0,0,0,0),
   'S3' = c(0.84,0.05,0.02,0.02,0.02,0.05),
@@ -144,87 +119,21 @@ whiteNoise <- list(
 
 
 
-TrueWeights <- c(0.9, 0.05, 0, 0, 0, 0.05)
-
-subjectfMRINoise <- function(TrueWeights,seed){
-  # Set seed
-  set.seed(seed)
-  # Small amount of noise to low-frequency, physiological and task related
-  LF <- phys <- task <- 0.02
-
-  # Bounds
-  UpperBound <- 0.94
-  UpperWhite <- TrueWeights[1] + 0.2
-  LowerBound <- 0
-  LowerWhite <- TrueWeights[1] - 0.2
-  # Start with white noise component
-  white <- round(TrueWeights[1] + rnorm(1, mean = 0, sd = 0.2),2)
-    # Now check if it is between the bounds
-    while(white > UpperWhite || white > UpperBound || white < LowerWhite|| white < LowerBound){
-      white <- round(TrueWeights[1] + rnorm(1, mean = 0, sd = 0.2),2)
-    }
-  # Now to temporal component: again create bounds
-  UpperTemporal <- 0.94-white
-  temporal <- round(TrueWeights[2] + rnorm(1, mean = 0, sd = 0.125),2)
-    # Now check if it is between the bounds
-    while(temporal > UpperTemporal || temporal > UpperBound || temporal < LowerBound){
-      temporal <- round(TrueWeights[2] + rnorm(1, mean = 0, sd = 0.125),2)
-    }
-  # Spatial noise
-  spatial <- 0.94 - white - temporal
-  return(c(white,temporal,LF,phys,task,spatial))
-}
-
-
-
-
-
 ####************####
 #### Subject/Study specific simulation details
 ####************####
 # Subject parameters
 TrueLoc1 <- c(4,4,4)
 TrueLoc2 <- c(10,10,10)
-TrueWhiteNoise <- whiteNoise[SCEN]
+TrueLocations <- rbind(TrueLoc1,TrueLoc2)
+TrueWhiteNoise <- Noise[SCEN]
 TrueRadius <- 1
-locations1 <- locations2 <- weights <- radius <- c()
-
 COPE <- VARCOPE <- TMAP <- array(NA,dim=c(DIM,nsub))
 
-# Loop over nsub to get the weights and the locations
-for(s in 1:nsub){
-  # Random locations
-  loc.tmp1 <- TrueLoc1 + round(rnorm(3,0,2),0)
-    while(any(loc.tmp1<1)){
-      loc.tmp1 <- TrueLoc1 + round(rnorm(3,0,2),0)
-    }
-  loc.tmp2 <- TrueLoc2 + round(rnorm(3,0,2),0)
-    while(any(loc.tmp2>16)){
-      loc.tmp2 <- TrueLoc2 + round(rnorm(3,0,2),0)
-    }
-  locations1 <- rbind(locations1,loc.tmp1)
-  locations2 <- rbind(locations2,loc.tmp2)
 
-  # Radius
-  radius.tmp <- TrueRadius + sample(c(0,1),size=2)
-  radius <- rbind(radius,'rad' = radius.tmp)
-
-  # Random noise components
-  whiteNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
-  while(whiteNoise > 1 || whiteNoise < 0.5){
-    whiteNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
-  }
-  temporalNoise <- round((1-whiteNoise)/2 + rnorm(1,0,0.25),2)
-  while(temporalNoise > c(1-whiteNoise) || temporalNoise < 0){
-    temporalNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
-  }
-  spatialNoise <- 1-whiteNoise-temporalNoise
-
-  weights <- rbind(weights, c(whiteNoise, temporalNoise,0 ,0, 0, spatialNoise))
-  rm(loc.tmp1,loc.tmp2,whiteNoise,temporalNoise,spatialNoise)
-}
-
-# Study parameters
+####************####
+#### Study parameters
+####************####
 SWEIGHTS <- SHEDGE <- SCOPE <- SVARCOPE <- STMAP <- array(NA,dim=c(DIM,nstud))
 
 
@@ -256,39 +165,56 @@ x <- fmri.design(matrix(c(simTSfmri(designC1, nscan=nscan, TR=TR, noise="none"),
 
 
 ####************####
-#### GENERATE DATA: INCLUDE SUBJECTS --> STUDIES
+#### GENERATE DATA
 ####************####
 # For loop over studies
 for(t in 1:nstud){
   print(paste('------------------------- STUDY ', t,' -------------------------',sep=''))
+  locations1 <- locations2 <- weights <- radius <- c()
   # For loop over nsub
   for(s in 1:nsub){
-    print(paste('At subject, ', s, sep=''))
-    coordinates <- list(c(locations1[s,]),c(locations2[s,]))
+    print(paste('At study ', t, ', subject ', s,', scenario ',SCEN, ' in simulation ', K, sep=''))
+    # First define the locations, weights and radius of the subjects for this study
+    LocSeed <- (t*nstud) + (starting.seed + s)
+    WeightSeed <- ((nstud*nstud) + (starting.seed + nsub)) + ((t-1)*nstud) + (s)
+      # Location
+      locations <- subjectfMRIlocation(TrueLocations,seed=LocSeed,DIM=DIM)
+      locations1 <- rbind(locations1,locations[1,])
+      locations2 <- rbind(locations2,locations[2,])
+        coordinates <- list(c(locations1[s,]),c(locations2[s,]))
+      # Weights
+      weights <- rbind(weights,subjectfMRINoise(Noise[[SCEN]],seed = WeightSeed))
+      # Radius
+      radius.tmp <- TrueRadius + sample(c(0,1),size=2)
+      radius <- rbind(radius,'rad' = radius.tmp)
+
     # Define two regions (which does nothing as there is no effect, )
     regions <- simprepSpatial(regions = 2, coord = coordinates, radius = list(radius[s,1],radius[s,2]), form ="cube", fading = 0)
       rm(coordinates)
 
     # Weighting structure: white, temporal and spatial noise.
     #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
-    #w <- weights[s,]
-    w <- c(1,0,0,0,0,0)
+    w <- round(c(weights[s,]),2)
+
     # Base value
     base <- 5
 
     # Actual simulated data
-    sim.data <-  simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+    sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
                  type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
         rm(w)
 
-    # 3D Gaussian Kernel over the 4D data
-    # fwhm <- 2
-    # sigma <- fwhm/(sqrt(8)*log(2))
-    # smoothint <- -round(2*sigma):round(2*sigma)
+    # Not smoothing in scenario 1
+    if(SCEN!=1){
+      # 3D Gaussian Kernel over the 4D data
+      fwhm <- 3
+      sigma <- fwhm/(sqrt(8)*log(2))
+      smoothint <- -round(2*sigma):round(2*sigma)
 
-    # for(i in 1:nscan){
-    #  sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
-    # }
+      for(i in 1:nscan){
+       sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
+      }
+    }
 
     # Reshape the data for fMRI analysis and make it the correct class
     datafmri <- list(ttt=writeBin(c(sim.data), raw(),4), mask=array(1,dim=DIM), dim = c(DIM, nscan))
@@ -311,18 +237,8 @@ for(t in 1:nstud){
     TMAP.sub <- array(c(COPE.sub)/sqrt(c(VARCOPE.sub)), dim=c(DIM))
       TMAP[,,,s] <- TMAP.sub
 
-      # Need a plot to check?
-      PLOT <- FALSE
-      if(isTRUE(PLOT)){
-        levelplot(TMAP[,,,1])
-        PVAL <- array(1-pt(TMAP,df=nscan-1),dim=DIM)
-        levelplot(PVAL[,,,1])
-        IDsign <- PVAL[,,,1] < 0.05
-        PVAL[IDsign] <- 1
-        PVAL[!IDsign] <- 0
-        levelplot(PVAL)
-      }
       rm(COPE.sub,VARCOPE.sub,TMAP.sub)
+
   }
 
   ####************####
@@ -357,7 +273,6 @@ for(t in 1:nstud){
     SWEIGHTS[,,,t] <- weigFix
 
     rm(GCOPE,GVARCOPE,HedgeG,weigFix)
-    gc(verbose = FALSE)
 }
 
 
@@ -371,9 +286,22 @@ WeightedAvg <- (apply((SHEDGE.mat*SWEIGHTS.mat),1,sum))/(apply(SWEIGHTS.mat,1,su
 # Calculate variance of weighted average
 varWeightAvg <- 1/apply(SWEIGHTS.mat,1,sum)
 
-# Now calculate confidence intervals for weighted average based on assumption of normal distributed ES
+####************####
+#### CALCULATE CI'S
+####************####
+
+# CI for weighted average based on normal distribution
 CI.upper.norm <- matrix(WeightedAvg,ncol=1) + (1.96 * sqrt(matrix(varWeightAvg,ncol=1)))
 CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,ncol=1)))
+
+# CI for weighted average based on t-distribution
+CI.upper.t <- matrix(WeightedAvg,ncol=1) + (qt(0.975,df=nsub-1) * sqrt(matrix(varWeightAvg,ncol=1)))
+CI.lower.t <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nsub-1) * sqrt(matrix(varWeightAvg,ncol=1)))
+
+# CI for weighted average based on weighted variance CI
+CI.weightedAverage <- (apply((SWEIGHTS.mat*(SHEDGE.mat - WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(SWEIGHTS.mat,1,sum))
+CI.upper.weightAvg <- matrix(WeightedAvg,ncol=1) + (qt(0.975,df=nsub-1) * sqrt(matrix(CI.weightedAverage,ncol=1)))
+CI.lower.weightAvg <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nsub-1) * sqrt(matrix(CI.weightedAverage,ncol=1)))
 
 
 
@@ -383,14 +311,18 @@ CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,n
 ###############
 ##
 
-save(SCOPE, file=paste(wd,'/Results/',K,'/WNSmSCOPE_',K,sep=''))
-save(SVARCOPE, file=paste(wd,'/Results/',K,'/WNSmSVARCOPE_',K,sep=''))
-save(STMAP, file=paste(wd,'/Results/',K,'/WNSmSTMAP_',K,sep=''))
-save(SHEDGE, file=paste(wd,'/Results/',K,'/WNSmSHEDGE_',K,sep=''))
-save(WeightedAvg, file=paste(wd,'/Results/',K,'/WNSmWeightedAvg_',K,sep=''))
-save(varWeightAvg, file=paste(wd,'/Results/',K,'/WNSmvarWeightAvg_',K,sep=''))
-save(CI.upper.norm, file=paste(wd,'/Results/',K,'/WNSmCI.upper.norm_',K,sep=''))
-save(CI.lower.norm, file=paste(wd,'/Results/',K,'/WNSmCI.lower.norm_',K,sep=''))
+save(SCOPE, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmSCOPE_',K,sep=''))
+save(SVARCOPE, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmSVARCOPE_',K,sep=''))
+save(STMAP, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmSTMAP_',K,sep=''))
+save(SHEDGE, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmSHEDGE_',K,sep=''))
+save(WeightedAvg, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmWeightedAvg_',K,sep=''))
+save(varWeightAvg, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmvarWeightAvg_',K,sep=''))
+save(CI.upper.norm, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmCI.upper.norm_',K,sep=''))
+save(CI.lower.norm, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmCI.lower.norm_',K,sep=''))
+save(CI.upper.t, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmCI.upper.t_',K,sep=''))
+save(CI.lower.t, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmCI.lower.t_',K,sep=''))
+save(CI.upper.weightAvg, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmCI.upper.weightAvg_',K,sep=''))
+save(CI.lower.weightAvg, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/WNSmCI.lower.weightAvg_',K,sep=''))
 
 
 

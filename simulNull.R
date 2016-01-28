@@ -38,7 +38,23 @@ set.seed(11121990)
 
 # Set WD
 wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit"
-DATAwd <- "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results"
+# Next are data for different scenarios
+DATAwd <- list(
+	'Smooth[1]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Smoothed",
+	'NonSmooth[2]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/NonSmoothed",
+  'WhiteNonSmooth[3]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/WhiteNonSmooth"
+	)
+
+prefix <- list(
+  'Smooth[1]' = "",
+  'NonSmooth[2]' = "NSm",
+  'WhiteNonSmooth[3]' = "WNSm"
+  )
+
+
+NUMDATAwd <- length(DATAwd)
+currentWD <- 3
+
 setwd(wd)
 
 
@@ -385,241 +401,266 @@ grid.arrange(levelplot,hist,ncol=2)
 
 
 ########################################
-## CI for group maps after low level simulation of fMRI data using neuRosim.
+## CI for classical meta-analysis. Standardized mean difference.
 #   * 500 simulations
+#   * Create 20 studies (each N=30), each looking at difference between group 1 and 2.
+#   * Transform each study to ES with formula used in Borenstein.
+#   * Aggregate studies using fixed effects meta-analysis.
+#   * Construct CI normal distribution from Borenstein et al. (2009)
+#   * Check coverage over all simulations
+
+# Reset seed
+set.seed(1112)
+
+nsim <- 5000
+nsub <- 30
+nstud <- 20
+trueVal <- 0
+
+CI.upper <- array(NA,dim=nsim)
+CI.lower <- array(NA,dim=nsim)
+coverage <- array(NA,dim=nsim)
+
+for(i in 1:nsim){
+	dStud <- array(NA,dim=nstud)
+	varStud <- array(NA,dim=nstud)
+	for(s in 1:nstud){
+		N1 <- nsub/2
+		N2 <- nsub/2
+		# Subjects in first group
+		X1 <- trueVal + rnorm(n=N1,mean=0,sd=2)
+		S2_X1 <- var(X1)
+		# Second group
+		X2 <- trueVal + rnorm(n=N2,mean=0,sd=2)
+		S2_X2 <- var(X2)
+		# Sample variance
+		Swithin <- sqrt((((N1-1)*S2_X1)+((N2-1)*S2_X2))/(N1 + N2 - 2))
+		# Cohen d
+		d <- (mean(X1) - mean(X2))/Swithin
+		# Variance
+		Vd <- (N1+N2)/(N1*N2) + (d^2/(2*(N1+N2)))
+		# Save in vector
+		dStud[s] <- d
+		varStud[s] <- Vd
+	}
+
+	# Now meta-analysis
+	# Weights
+	W <- 1/varStud
+	# Weighted mean
+	wMean <- sum(W*dStud)/sum(W)
+	# Variance of summary effect
+	varSum <- 1/sum(W)
+	# Confidence interval
+	CI.upper[i] <- wMean + (1.96 * sqrt(varSum))
+	CI.lower[i] <- wMean - (1.96 * sqrt(varSum))
+
+	# Coverage
+	coverage[i] <- ifelse(trueVal >= CI.lower[i] & trueVal <= CI.upper[i], 1, 0)
+}
+
+
+mean(coverage)
+
+
+
+
+########################################
+## CI for classical meta-analysis. One sample effect-size
+#   * 500 simulations
+#   * Create 20 studies (each N=30), each looking at difference between group and 0.
+#   * Transform each study to ES with formula used in Borenstein.
+#   * Aggregate studies using fixed effects meta-analysis.
+#   * Construct CI normal distribution from Borenstein et al. (2009)
+#   * Check coverage over all simulations
+
+
+nsim <- 50000
+nsub <- 30
+nstud <- 20
+trueVal <- 0
+
+dCI.upper <- gCI.upper <- gdCI.upper <- array(NA,dim=nsim)
+dCI.lower <- gCI.lower <- gdCI.lower <- array(NA,dim=nsim)
+dcoverage <- gcoverage <- gdcoverage <- array(NA,dim=nsim)
+dwMean <- gwMean <- gdwMean <- array(NA,dim=nsim)
+
+for(i in 1:nsim){
+	dStud <- array(NA,dim=nstud)
+	dvarStud <- array(NA,dim=nstud)
+	gStud <- array(NA,dim=nstud)
+	gvarStud <- array(NA,dim=nstud)
+	gdvarStud <- array(NA,dim=nstud)
+	for(s in 1:nstud){
+		# Subjects in group
+		X1 <- trueVal + rnorm(n=nsub,mean=0,sd=2)
+		S2_X1 <- var(X1)
+
+		# Cohen d
+		d <- (mean(X1))/sqrt(S2_X1)
+		# Variance
+		Vd <- (1/nsub) + (1 - (gamma((nsub - 2) / 2) / gamma((nsub - 1) / 2))^2 * (nsub - 3) / 2) * d^2
+
+		# Hedge g
+		t <- (mean(X1))/sqrt(S2_X1/nsub)
+		g <- hedgeG(t,nsub)
+		Vg <- varHedge(g,nsub)
+
+		# Hedge g with variance of Radua
+		Vgd <- (1/nsub) + (1 - (gamma((nsub - 2) / 2) / gamma((nsub - 1) / 2))^2 * (nsub - 3) / 2) * g^2
+
+		# Save in vector
+		dStud[s] <- d
+		dvarStud[s] <- Vd
+		gStud[s] <- g
+		gvarStud[s] <- Vg
+		gdvarStud[s] <- Vgd
+	}
+
+	# Now meta-analysis
+	# Weights
+	dW <- 1/dvarStud
+	gW <- 1/gvarStud
+	gdW <- 1/gdvarStud
+	# Weighted means
+	dwMean[i] <- sum(dW*dStud)/sum(dW)
+	gwMean[i] <- sum(gW*gStud)/sum(gW)
+	gdwMean[i] <- sum(gdW*gStud)/sum(gdW)
+	# Variance of summary effect
+	dvarSum <- 1/sum(dW)
+	gvarSum <- 1/sum(gW)
+	gdvarSum <- 1/sum(gdW)
+
+	# Confidence interval
+	dCI.upper[i] <- dwMean[i] + (1.96 * sqrt(dvarSum))
+	dCI.lower[i] <- dwMean[i] - (1.96 * sqrt(dvarSum))
+	gCI.upper[i] <- gwMean[i] + (1.96 * sqrt(gvarSum))
+	gCI.lower[i] <- gwMean[i] - (1.96 * sqrt(gvarSum))
+	gdCI.upper[i] <- gdwMean[i] + (1.96 * sqrt(gdvarSum))
+	gdCI.lower[i] <- gdwMean[i] - (1.96 * sqrt(gdvarSum))
+
+	# Coverage
+	dcoverage[i] <- ifelse(trueVal >= dCI.lower[i] & trueVal <= dCI.upper[i], 1, 0)
+	gcoverage[i] <- ifelse(trueVal >= gCI.lower[i] & trueVal <= gCI.upper[i], 1, 0)
+	gdcoverage[i] <- ifelse(trueVal >= gdCI.lower[i] & trueVal <= gdCI.upper[i], 1, 0)
+
+}
+
+mean(dcoverage);mean(gcoverage);mean(gdcoverage)
+
+par(mfrow=c(2,2))
+hist(dwMean, main='Cohen d', xlab='Weighted average')
+hist(gwMean, main='Hedge g, ours', xlab='Weighted average')
+hist(gdwMean, main='Hedge g, Radua', xlab='Weighted average')
+
+
+
+########################################
+## CI for classical meta-analysis. Based on linear regression.
+#		* Linear regression with X = blocked design.
+#   * Create 20 studies (each N=30), each looking at difference between group and 0.
+#   * Transform each study to ES with formula used in Borenstein.
+#   * Aggregate studies using fixed effects meta-analysis.
+#   * Construct CI normal distribution from Borenstein et al. (2009)
+#   * Check coverage over all simulations
+
+
+nsim <- 10000
+nsub <- 30
+nstud <- 20
+trueVal <- 0
+
+gCI.upper <- gdCI.upper <- array(NA,dim=nsim)
+gCI.lower <- gdCI.lower <- array(NA,dim=nsim)
+gcoverage <- gdcoverage <- array(NA,dim=nsim)
+gwMean <- gdwMean <- array(NA,dim=nsim)
+
+for(i in 1:nsim){
+	dStud <- array(NA,dim=nstud)
+	dvarStud <- array(NA,dim=nstud)
+	gStud <- array(NA,dim=nstud)
+	gvarStud <- array(NA,dim=nstud)
+	gdvarStud <- array(NA,dim=nstud)
+	Beta <- c()
+	for(s in 1:nstud){
+		# X values
+		X <- sample(c(0:50),nsub)
+		# Data
+		Y <- trueVal + rnorm(n=length(X),mean=0,sd=3)
+		# Fit model
+		fit <- lm(Y~X)
+
+		# T-value, transform to hedge G and two types of variance.
+		t <- summary(fit)$coefficients['X','t value']
+		g <- hedgeG(t,nsub)
+		Vg <- varHedge(g,nsub)
+		Vgd <- (1/nsub) + (1 - (gamma((nsub - 2) / 2) / gamma((nsub - 1) / 2))^2 * (nsub - 3) / 2) * g^2
+
+		# Save in vector
+		gStud[s] <- g
+		gvarStud[s] <- Vg
+		gdvarStud[s] <- Vgd
+	}
+	# Now meta-analysis
+	# Weights
+	gW <- 1/gvarStud
+	gdW <- 1/gdvarStud
+	# Weighted means
+	gwMean[i] <- sum(gW*gStud)/sum(gW)
+	gdwMean[i] <- sum(gdW*gStud)/sum(gdW)
+	# Variance of summary effect
+	gvarSum <- 1/sum(gW)
+	gdvarSum <- 1/sum(gdW)
+
+	# Confidence interval
+	gCI.upper[i] <- gwMean[i] + (1.96 * sqrt(gvarSum))
+	gCI.lower[i] <- gwMean[i] - (1.96 * sqrt(gvarSum))
+	gdCI.upper[i] <- gdwMean[i] + (1.96 * sqrt(gdvarSum))
+	gdCI.lower[i] <- gdwMean[i] - (1.96 * sqrt(gdvarSum))
+
+	# Coverage
+	gcoverage[i] <- ifelse(trueVal >= gCI.lower[i] & trueVal <= gCI.upper[i], 1, 0)
+	gdcoverage[i] <- ifelse(trueVal >= gdCI.lower[i] & trueVal <= gdCI.upper[i], 1, 0)
+
+}
+
+mean(gcoverage);mean(gdcoverage)
+
+hist(gwMean)
+hist(gdwMean)
+
+
+
+
+
+
+########################################
+## CI for group maps after low level simulation of fMRI data using neuRosim.
 #   * Create 16x16x16 null-images for N subjects and 15 studies.
 #   * Each image is created using the same design.
 #   * No between study changes in the SNR.
 #   * Pool each study with ordinary OLS pooling method: T-maps.
 #   * Transform each study to ES with formula used in FixRan study.
 #   * Aggregate studies using fixed effects meta-analysis.
-#   * Construct CI in each voxel, around weighted average of ES, with normal approximation from Borenstein et al. (2009)
+#   * Construct several types of CI in each voxel
 #   * Check coverage in each voxel over all simulations
 
-## Reset seed
-set.seed(11121990)
 
-####************####
-#### Global options
-####************####
-nstud <- 15
-nsub <- 15
-TR <- 2
-nscan <- 200
-total <- TR*nscan
-on1 <- seq(1,total,40)
-on2 <- seq(20,total,40)
-onsets <- list(on1,on2)
-duration <- list(20,20)
-effect.null <- list(0,0)                              ## No effect
-effect <- list(1,1) 			                            ## Effect of 1 for designmatrix
-DIM <- c(16,16,16)
-
-
-####************####
-#### Subject/Study specific simulation details
-####************####
-# Subject parameters
-TrueLoc1 <- c(4,4,4)
-TrueLoc2 <- c(10,10,10)
-TrueWhiteNoise <- 0.7
-TrueRadius <- 1
-locations1 <- locations2 <- weights <- radius <- c()
-
-COPE <- VARCOPE <- TMAP <- array(NA,dim=c(DIM,nsub))
-
-# Loop over nsub to get the weights and the locations
-for(s in 1:nsub){
-  # Random locations
-  loc.tmp1 <- TrueLoc1 + round(rnorm(3,0,2),0)
-    while(any(loc.tmp1<1)){
-      loc.tmp1 <- TrueLoc1 + round(rnorm(3,0,2),0)
-    }
-  loc.tmp2 <- TrueLoc2 + round(rnorm(3,0,2),0)
-    while(any(loc.tmp2>16)){
-      loc.tmp2 <- TrueLoc2 + round(rnorm(3,0,2),0)
-    }
-  locations1 <- rbind(locations1,loc.tmp1)
-  locations2 <- rbind(locations2,loc.tmp2)
-
-  # Radius
-  radius.tmp <- TrueRadius + sample(c(0,1),size=2)
-  radius <- rbind(radius,'rad' = radius.tmp)
-
-  # Random noise components
-  whiteNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
-  while(whiteNoise > 1 || whiteNoise < 0.5){
-    whiteNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
-  }
-  temporalNoise <- round((1-whiteNoise)/2 + rnorm(1,0,0.25),2)
-  while(temporalNoise > c(1-whiteNoise) || temporalNoise < 0){
-    temporalNoise <- round(TrueWhiteNoise + rnorm(1,0,0.5),2)
-  }
-  spatialNoise <- 1-whiteNoise-temporalNoise
-
-  weights <- rbind(weights, c(whiteNoise, temporalNoise,0 ,0, 0, spatialNoise))
-  rm(loc.tmp1,loc.tmp2,whiteNoise,temporalNoise,spatialNoise)
-}
-
-# Study parameters
-SWEIGHTS <- SHEDGE <- SCOPE <- SVARCOPE <- STMAP <- array(NA,dim=c(DIM,nstud))
-
-
-
-####************####
-#### Design matrices
-####************####
-# Design Matrices via neuRosim:
-#     * We need three design vectors:
-#     * The first two have an intercept (needed for analysis).
-#        * These will be the two columns (1 -1 contrast) of the design matrix in the analysis.
-#     * The third one is used to generate data with a NULL effect.
-designC1 <- simprepTemporal(onsets = list(on1), durations = list(duration[[1]]),
-                         hrf = "double-gamma", TR = TR, totaltime = total,
-                         effectsize = list(effect[[1]]))
-
-designC2 <- simprepTemporal(onsets = list(on2), durations = list(duration[[2]]),
-                        hrf = "double-gamma", TR = TR, totaltime = total,
-                        effectsize = list(effect[[1]]))
-
-design.null <- simprepTemporal(regions = 2, onsets = onsets, durations = duration,
-                         hrf = "double-gamma", TR = TR, totaltime = total,
-                         effectsize = effect.null)
-
-# X-matrix in order to fit the model later on (combination of C1 and C2).
-x <- fmri.design(matrix(c(simTSfmri(designC1, nscan=nscan, TR=TR, noise="none"),
-        simTSfmri(designC2, nscan=nscan, TR=TR, noise="none")),ncol=2),0)
-
-
-
-####************####
-#### GENERATE DATA: INCLUDE STUDIES --> SUBJECTS
-####************####
-
-# For loop over studies
-for(t in 1:nstud){
-  print(paste('------------------------- STUDY ', t,' -------------------------',sep=''))
-  # For loop over nsub
-  for(s in 1:nsub){
-    print(paste('At subject, ', s, sep=''))
-    coordinates <- list(c(locations1[s,]),c(locations2[s,]))
-    # Define two regions (which does nothing as there is no effect, )
-    regions <- simprepSpatial(regions = 2, coord = coordinates, radius = list(radius[s,1],radius[s,2]), form ="cube", fading = 0)
-      rm(coordinates)
-
-    # Weighting structure: white, temporal and spatial noise.
-    #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
-    w <- weights[s,]
-    # Base value
-    base <- 5
-
-    # Actual simulated data
-    sim.data <-  simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
-                 type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
-        rm(w)
-
-    # 3D Gaussian Kernel over the 4D data
-    fwhm <- 2
-    sigma <- fwhm/(sqrt(8)*log(2))
-    smoothint <- -round(2*sigma):round(2*sigma)
-
-    for(i in 1:nscan){
-     sim.data[,,,i] <- GaussSmoothArray(sim.data[,,,i], voxdim=c(1,1,1), ksize = length(smoothint), sigma = diag(sigma, 3))
-    }
-
-    # Reshape the data for fMRI analysis and make it the correct class
-    datafmri <- list(ttt=writeBin(c(sim.data), raw(),4), mask=array(1,dim=DIM), dim = c(DIM, nscan))
-    class(datafmri) <- "fmridata"
-      rm(sim.data)
-    ####************####
-    #### ANALYZE DATA
-    ####************####
-
-
-    # Fitting GLM model: estimated AR(1)-coefficients are used to whiten data, may produce warnings because data is pre-smoothed.
-    model <- fmri.lm(datafmri,x, actype = "accalc", keep="all",contrast=c(1,-1))
-
-    # Estimated contrast of parameter beta's from model
-    COPE.sub <- model$cbeta
-      COPE[,,,s] <- COPE.sub
-    VARCOPE.sub <- model$var
-      VARCOPE[,,,s] <- VARCOPE.sub
-    # Constructing t-map
-    TMAP.sub <- array(c(COPE.sub)/sqrt(c(VARCOPE.sub)), dim=c(DIM))
-      TMAP[,,,s] <- TMAP.sub
-
-      # Need a plot to check?
-      PLOT <- FALSE
-      if(isTRUE(PLOT)){
-        levelplot(TMAP[,,,1])
-        PVAL <- array(1-pt(TMAP,df=nscan-1),dim=DIM)
-        levelplot(PVAL[,,,1])
-        IDsign <- PVAL[,,,1] < 0.05
-        PVAL[IDsign] <- 1
-        PVAL[!IDsign] <- 0
-        levelplot(PVAL)
-      }
-      rm(COPE.sub,VARCOPE.sub,TMAP.sub)
-  }
-
-  ####************####
-  #### GROUP ANALYSIS
-  ####************####
-
-  # Group COPE (average)
-  GCOPE <- apply(COPE,c(1,2,3),mean)
-
-  # Now we will do the OLS estimation of the variance
-  GVARCOPE <- apply(COPE,c(1,2,3),var)
-
-  # TMAP
-  GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub-1))
-
-
-  ####************####
-  #### TRANSFORM TO ES
-  ####************####
-  # Transform to an ES using hedgeG function, for each study
-  HedgeG <- apply(matrix(GTMAP,ncol=1),1,FUN=hedgeG,N=nsub)
-  # Calculate variance of ES
-  VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
-  # Weights of this study
-  weigFix <- 1/VarianceHedgeG
-
-    # Put GCOPE, GVARCOPE, GTMAP, hedge's G and weights in vector
-    SCOPE[,,,t] <- GCOPE
-    SVARCOPE[,,,t] <- GVARCOPE
-    STMAP[,,,t] <- GTMAP
-    SHEDGE[,,,t] <- HedgeG
-    SWEIGHTS[,,,t] <- weigFix
-
-    rm(GCOPE,GVARCOPE,HedgeG,weigFix)
-    gc(verbose = FALSE)
-}
-
-
-# Re-format arrays
-SHEDGE.mat <- matrix(SHEDGE,ncol=nstud)
-SWEIGHTS.mat <- matrix(SWEIGHTS,ncol=nstud)
-
-# Now calculate weighted average.
-WeightedAvg <- (apply((SHEDGE.mat*SWEIGHTS.mat),1,sum))/(apply(SWEIGHTS.mat,1,sum))
-
-# Calculate variance of weighted average
-varWeightAvg <- 1/apply(SWEIGHTS.mat,1,sum)
-
-# Now calculate confidence intervals for weighted average based on assumption of normal distributed ES
-CI.upper.norm <- matrix(WeightedAvg,ncol=1) + (1.96 * sqrt(matrix(varWeightAvg,ncol=1)))
-CI.lower.norm <- matrix(WeightedAvg,ncol=1) - (1.96 * sqrt(matrix(varWeightAvg,ncol=1)))
-
-
+###########################
+# SEE FILE lowLevelToMeta.R
+###########################
 
 
 ################### // ###################
 ## This code now gets simulated on HPC ##
 ################### // ###################
-nsim <- 500
-mean.coverage.norm <- array(NA,dim=c(prod(DIM),nsim))
+nsim <- 8000
+DIM <- c(16,16,16)
+mean.coverage.norm <- uppr.coverage.norm <- lowr.coverage.norm <-
+	mean.coverage.t <- uppr.coverage.t <- lowr.coverage.t <-
+	mean.coverage.weightAvg <- uppr.coverage.weightAvg <- lowr.coverage.weightAvg <-
+			array(NA,dim=c(prod(DIM),nsim))
+
 trueVal <- 0
 
 ####************####
@@ -628,21 +669,21 @@ trueVal <- 0
 # Load in R objects and calculate coverage.
 for(i in 1:nsim){
   # Load in CI.upper.norm and CI.lower.norm
-  load(paste(DATAwd,'/',i,'/CI.upper.norm_',i,sep=''))
-  load(paste(DATAwd,'/',i,'/CI.lower.norm_',i,sep=''))
+  load(paste(DATAwd[[currentWD]],'/',i,'/',prefix[[currentWD]],'CI.upper.norm_',i,sep=''))
+  load(paste(DATAwd[[currentWD]],'/',i,'/',prefix[[currentWD]],'CI.lower.norm_',i,sep=''))
   # Calculate indicator for coverage and save into vector
-  mean.coverage.norm[,i] <- ifelse(trueVal > CI.lower.norm & trueVal < CI.upper.norm, 1, 0)
+  mean.coverage.norm[,i] <- ifelse(trueVal >= CI.lower.norm & trueVal <= CI.upper.norm, 1, 0)
   rm(CI.upper.norm,CI.lower.norm)
 }
 mean.coverage.norm
 dim(mean.coverage.norm)
-mean.coverage.norm.vox <- apply(mean.coverage.norm,1,mean);mean.coverage.norm.vox
+mean.coverage.norm.vox <- apply(mean.coverage.norm,1,mean);head(mean.coverage.norm.vox)
 mean(mean.coverage.norm.vox)
 
-  # As this takes quit long, let us save this.
+  # As this takes some time, let us save this.
   save(mean.coverage.norm, file=paste(wd,'/RObjects/',date,'-mean_coverage_norm_lowToMeta',sep=''))
   # Load in object
-  load(paste(wd,'/RObjects/',date,'-mean_coverage_norm_lowToMeta',sep=''))
+  load(paste(wd,'/RObjects/2016-01-18-mean_coverage_norm_lowToMeta',sep=''))
 
 
 ####************####
@@ -671,25 +712,60 @@ grid.arrange(levelplot,hist,ncol=2,
 mean.wAvg.norm <- array(NA,dim=c(prod(DIM),nsim))
 for(i in 1:nsim){
   # Load in CI.upper.norm and CI.lower.norm
-  load(paste(DATAwd,'/',i,'/WeightedAvg_',i,sep=''))
+  load(paste(DATAwd[[currentWD]],'/',i,'/',prefix[[currentWD]],'WeightedAvg_',i,sep=''))
   mean.wAvg.norm[,i] <- WeightedAvg
   rm(WeightedAvg)
 }
 
+head(mean.wAvg.norm)
+dim(mean.wAvg.norm)
+
+# Take some random voxel and look at weighted mean distribution
+ToSample <- sample(c(1:dim(mean.wAvg.norm)[1]),20)
+par(mfrow=c(4,5))
+for(i in 1:length(ToSample)){
+  index <- ToSample[i]
+  hist(mean.wAvg.norm[index,], main = paste('Voxel ', index,sep=''),xlab='Weighted average',ylab='')
+}
+
+# Look at distribution of weighted averages across all voxels (and simulations).
 mean.wAvg.norm.vox <- apply(mean.wAvg.norm,1,mean)
+  length(mean.wAvg.norm.vox)
 mean.wAvg.norm.frame <- data.frame('wAvg' = matrix(mean.wAvg.norm.vox,ncol=1))
-ggplot(mean.wAvg.norm.frame, aes(x=wAvg)) + geom_histogram() +
+ggplot(mean.wAvg.norm.frame, aes(x=wAvg)) + geom_histogram() + geom_density(size=1.4,colour='#016450') +
+scale_x_continuous(name="")
+# Or density plot
+ggplot(mean.wAvg.norm.frame, aes(x=wAvg)) + geom_density(size=1.5,fill='#1c9099',colour='#016450') +
 scale_x_continuous(name="")
 
 
+# Look at weighted mean distribution of voxels with larger coverage
+ToLook <- which(mean.coverage.norm.vox>0.986)
+length(ToLook)
+par(mfrow=c(5,6))
+for(i in 1:length(ToLook)){
+  index <- ToLook[i]
+  hist(mean.wAvg.norm[index,], main = paste('Voxel ', index,sep=''),xlab='Weighted average',ylab='')
+}
 
 
+# Try to make a funnel plot of the individual voxels with their CI bar around
+ggplot(mean.wAvg.norm.frame) + geom_points
 
+# Horizontal plot
+hor.wAvg <- data.frame('x' = seq(1:length(mean.wAvg.norm.vox)),
+                          'y' = mean.wAvg.norm.vox)
 
-
-
-
-
-
+ggplot(hor.wAvg, aes(x, y)) + geom_point()
+  # Where are the voxels with these values > 0.005
+  IDval <- mean.wAvg.norm.frame > .005
+  checkVox <- array(0,dim=length(mean.wAvg.norm.vox))
+  checkVox[IDval] <- 1
+checkVox <- array(checkVox,dim=DIM)
+  levelplot(checkVox)
+checkVox[4,4,4] <- 5
+checkVox[10,10,10] <- 5
+checkVox[10,10,11] <- 2.5
+  levelplot(checkVox)
 
 
