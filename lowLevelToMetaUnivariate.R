@@ -153,7 +153,7 @@ for(t in 1:nstud){
     regions <- simprepSpatial(regions = 1, coord = coordinates, radius = list(radius), form ="cube", fading = 0)
       rm(coordinates)
 
-    # Weighting structure: white, temporal and spatial noise.
+    # Weighting structure.
     #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
     w <- c(1,0,0,0,0,0)
 

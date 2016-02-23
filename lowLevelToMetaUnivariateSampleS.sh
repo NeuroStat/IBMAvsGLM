@@ -15,7 +15,7 @@ NSCEN=45
 
 #----------------------------------------------------#
 # NUMBER OF FOR LOOPS
-PBS_ARRAYID=100
+PBS_ARRAYID=1000
 #----------------------------------------------------#
 
 
@@ -27,7 +27,7 @@ cd Results
 mkdir "$s"
 	cd "$s"
   mkdir $(printf "SCEN_%1i " $(seq 1 $NSCEN))
-cd $srcdir  
+cd $srcdir
   # GO TIME: FOR LOOP OVER ALL SCENARIOS:
 	for i in $(eval echo "{1..$NSCEN}"); do
 	  Rscript lowLevelToMetaUnivariateSampleS.R "$s" "$i" "MAC" >> Text_Files/output_"$s".txt 2>> Text_Files/warning_"$s".txt

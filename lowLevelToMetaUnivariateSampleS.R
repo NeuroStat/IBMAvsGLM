@@ -17,7 +17,15 @@
 
 # Here, we check the univariate approach for increasing sample size and k studies.
 
+K <- 333
+SCEN <- 16
 
+
+[6,]   22  422
+[7,]   25  330
+[8,]   25  333
+[9,]   27  330
+[10,]   27  422
 
 # Reset working directory
 rm(list=ls())
@@ -31,6 +39,9 @@ input <- commandArgs(TRUE)
   SCEN <- try(as.numeric(as.character(input)[2]), silent=TRUE)
   # Which machine
   MACHINE <- try(as.character(input)[3],silent=TRUE)
+  if(!exists(MACHINE)){
+    MACHINE <- 'MAC'
+  }
 
 # Set starting seed: it is the product of the amount of voxels, the number of studies and the number of subjects!
 starting.seed <- 36864*K
@@ -62,7 +73,12 @@ library(neuRosim)
 
 
 # Load in functions from FixRan study: THIS HAS TO COME AFTER ALL LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
-source_url('https://raw.githubusercontent.com/HBossier/FixRanStudyGit/master/Development/functions.R',sha1='c4c3b98288ab8a9bdf0d081f2ace902d5cd13e18')
+if(MACHINE == 'MAC'){
+  source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
+}
+if(MACHINE == 'HPC'){
+  source('/user/scratch/gent/gvo000/gvo00022/vsc40728/Simulation/functions.R')
+}
 
 
 

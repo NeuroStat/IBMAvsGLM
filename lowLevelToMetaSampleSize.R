@@ -44,16 +44,14 @@ input <- commandArgs(TRUE)
   # Which machine
   MACHINE <- try(as.character(input)[3],silent=TRUE)
     # If no machine is specified, then it has to be this machine!
-    if(!exists(MACHINE)){
+    if(is.na(MACHINE)){
       MACHINE <- 'MAC'
       K <- 1
-      SCEN <- 1
+      SCEN <- 10
     }
 
-
-
 # Set starting seed: it is the product of the amount of voxels, the number of studies and the number of subjects!
-starting.seed <- 36864*K
+starting.seed <- 36865*K
 set.seed(starting.seed)
 
 # Set WD
@@ -83,7 +81,7 @@ library(neuRosim)
 
 # Load in functions from FixRan study: THIS HAS TO COME AFTER ALL LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
 if(MACHINE == 'MAC'){
-  source_url('https://raw.githubusercontent.com/HBossier/FixRanStudyGit/master/Development/functions.R',sha1='c4c3b98288ab8a9bdf0d081f2ace902d5cd13e18')
+  source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
 }
 if(MACHINE == 'HPC'){
   source('/user/scratch/gent/gvo000/gvo00022/vsc40728/Simulation/functions.R')
@@ -146,13 +144,13 @@ TrueLoc2 <- c(10,10,10)
 TrueLocations <- rbind(TrueLoc1,TrueLoc2)
 TrueWhiteNoise <- Noise[1]						# MIND THE INDEX HERE!
 TrueRadius <- 1
-COPE <- VARCOPE <- TMAP <- array(NA,dim=c(DIM,nsub))
+COPE <- VARCOPE <- TMAP <- array(NA,dim=c(prod(DIM),nsub))
 
 
 ####************####
 #### Study parameters
 ####************####
-SWEIGHTS <- SHEDGE <- SCOPE <- SVARCOPE <- STMAP <- array(NA,dim=c(DIM,nstud))
+SWEIGHTS <- SHEDGE <- SCOPE <- SVARCOPE <- STMAP <- array(NA,dim=c(prod(DIM),nstud))
 
 
 ####************####
@@ -234,15 +232,41 @@ for(t in 1:nstud){
 
     # Fitting GLM model: estimated AR(1)-coefficients are used to whiten data, may produce warnings because data is pre-smoothed.
     model <- fmri.lm(datafmri,x, actype = "accalc", keep="all",contrast=c(1,-1))
+#
+# sim.data <- t(matrix(sim.data,ncol=nscan))
+# dim(sim.data)
+#     model.lm <- lm(sim.data ~ x[,-3])
+#       dim(coef(model.lm))
+#       b1 <- coef(model.lm)[2,]
+#       b2 <- coef(model.lm)[3,]
+#       BETAS <- rbind(b1,b2)
+#       CONTRAST <- c(1,-1)
+#         # Estimated contrast of parameter beta's
+#       COPE.sub <- CONTRAST %*% BETAS
+#           COPE[s] <- COPE.sub
+#
+# COPE.sub2 <- array(COPE.sub2, dim = prod(DIM))
+# COPE.sub <- array(COPE.sub, dim=prod(DIM))
+# cbind(COPE.sub2,COPE.sub)
+#
+# tail(COPE.sub)
+# sim.data <- t(matrix(sim.data,ncol=nscan))
+# x <- x[,-3]
+# BETA <- (CONTRAST %*% solve(t(x) %*% x)) %*% t(x) %*% sim.data
+#
+# cbind(array(BETA,dim=prod(DIM)),array(COPE.sub,dim=prod(DIM)))
+#
+
+
 
     # Estimated contrast of parameter beta's from model
     COPE.sub <- model$cbeta
-      COPE[,,,s] <- COPE.sub
+      COPE[,s] <- COPE.sub
     VARCOPE.sub <- model$var
-      VARCOPE[,,,s] <- VARCOPE.sub
+      VARCOPE[,s] <- VARCOPE.sub
     # Constructing t-map
     TMAP.sub <- array(c(COPE.sub)/sqrt(c(VARCOPE.sub)), dim=c(DIM))
-      TMAP[,,,s] <- TMAP.sub
+      TMAP[,s] <- TMAP.sub
 
       rm(COPE.sub,VARCOPE.sub,TMAP.sub)
 
@@ -253,10 +277,10 @@ for(t in 1:nstud){
   ####************####
 
   # Group COPE (average)
-  GCOPE <- apply(COPE,c(1,2,3),mean)
+  GCOPE <- apply(COPE,1,mean,na.rm=TRUE)
 
   # Now we will do the OLS estimation of the variance
-  GVARCOPE <- apply(COPE,c(1,2,3),var)
+  GVARCOPE <- apply(COPE,1,var,na.rm=TRUE)
 
   # TMAP
   GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub))
@@ -273,11 +297,11 @@ for(t in 1:nstud){
   weigFix <- 1/VarianceHedgeG
 
     # Put GCOPE, GVARCOPE, GTMAP, hedge's G and weights in vector
-    SCOPE[,,,t] <- GCOPE
-    SVARCOPE[,,,t] <- GVARCOPE
-    STMAP[,,,t] <- GTMAP
-    SHEDGE[,,,t] <- HedgeG
-    SWEIGHTS[,,,t] <- weigFix
+    SCOPE[,t] <- GCOPE
+    SVARCOPE[,t] <- GVARCOPE
+    STMAP[,t] <- GTMAP
+    SHEDGE[,t] <- HedgeG
+    SWEIGHTS[,t] <- weigFix
 
     rm(GCOPE,GVARCOPE,HedgeG,weigFix)
 }
@@ -309,6 +333,9 @@ CI.lower.t <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(v
 CI.weightedVariance <- (apply((SWEIGHTS.mat*(SHEDGE.mat - WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(SWEIGHTS.mat,1,sum))
 CI.upper.weightVar <- matrix(WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.weightedVariance,ncol=1)))
 CI.lower.weightVar <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.weightedVariance,ncol=1)))
+
+
+
 
 
 

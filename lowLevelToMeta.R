@@ -299,9 +299,9 @@ CI.upper.t <- matrix(WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(v
 CI.lower.t <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(varWeightAvg,ncol=1)))
 
 # CI for weighted average based on variance CI
-CI.weightedAverage <- (apply((SWEIGHTS.mat*(SHEDGE.mat - WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(SWEIGHTS.mat,1,sum))
-CI.upper.weightAvg <- matrix(WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.weightedAverage,ncol=1)))
-CI.lower.weightAvg <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.weightedAverage,ncol=1)))
+CI.weightedVariance <- (apply((SWEIGHTS.mat*(SHEDGE.mat - WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(SWEIGHTS.mat,1,sum))
+CI.upper.weightVar <- matrix(WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.weightedVariance,ncol=1)))
+CI.lower.weightVar <- matrix(WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.weightedVariance,ncol=1)))
 
 
 
@@ -321,8 +321,8 @@ save(CI.upper.norm, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.upper.norm_',
 save(CI.lower.norm, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.lower.norm_',K,sep=''))
 save(CI.upper.t, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.upper.t_',K,sep=''))
 save(CI.lower.t, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.lower.t_',K,sep=''))
-save(CI.upper.weightAvg, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.upper.weightAvg_',K,sep=''))
-save(CI.lower.weightAvg, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.lower.weightAvg_',K,sep=''))
+save(CI.upper.weightVar, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.upper.weightVar_',K,sep=''))
+save(CI.lower.weightVar, file=paste(wd,'/Results/',K,'/SCEN_',SCEN,'/CI.lower.weightVar_',K,sep=''))
 
 
 
