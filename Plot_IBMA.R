@@ -1,9 +1,9 @@
 ####################
-#### TITLE:     Plotting results of the lowLevelToMeta.R null data.
+#### TITLE:     Plotting results of the IBMA simulation.
 #### Contents:
 ####
 #### Source Files:
-#### First Modified: 01/02/2016
+#### First Modified: 19/02/2016
 #### Notes:
 #################
 
@@ -17,19 +17,10 @@
 
 # Blocked design for individual subjects.
 # Location and noise varies over subjects (only white, temporal and spatial noise, but magnitude differs).
-# Two conditions, contrast is 1 -1.
-# These N subjects are pooled using simple OLS pooling.
-# The resulting images are converted to Hedges' g and pooled using fixed/random effects meta-analysis.
+# One condition.
+# These N subjects are pooled using FSL FLAME1 (mixed effects).
+# The resulting images are fed into third level of FLAME1.
 
-
-
-# Different takes:
-#		* Take 1: multivariate, 7 scenario's
-#		* Take 2: univariate (1 voxel), 1 scenario (only white noise)
-#		* Take 3: increasing sample size and amount of studies (white noise only)
-#		* Take 4: increasing sample size and amount of studies (white noise only) for UNIVARIATE approach
-#		* Take 5: Same as take 3, but with R file differently sourced.
-#   * Take 6: Simple design (only one condition), grid of 2 x 2 x 2 voxels (white noise only)
 
 
 ##
@@ -62,8 +53,7 @@ DATAwd <- list(
 	'Take[4]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take4/Results",
 	'Take[5]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take5",
   'Take[6]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take6",
-	'Take[7]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/IBMA",
-	'Take[8]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take8"
+	'Take[7]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/IBMA"
 	)
 
 # Prefixes
@@ -74,12 +64,11 @@ prefix <- list(
 	'Take[4]' = "UNI_SK_",
 	'Take[5]' = 'SK_',
   'Take[6]' = 'SD_',
-	'Take[7]' = 'IBMA_',
-	'Take[8]' = 'SDG_'
+	'Take[7]' = 'IBMA_'
 )
 
 NUMDATAwd <- length(DATAwd)
-currentWD <- 8
+currentWD <- 7
 
 # Number of scenarios
 NumScen.tmp <- matrix(c(
@@ -89,16 +78,51 @@ NumScen.tmp <- matrix(c(
                 4,45,
                 5,45,
                 6,30,
-								7,30,
-								8,30
+								7,30
               ), ncol=2, byrow=TRUE)
 NumScen <- NumScen.tmp[currentWD,2]
-
+print(paste('We have ', NumScen, ' scenarios on the menu today!', sep=''))
 
 # Number of conficence intervals
-CIs <- c('norm','t','weightVar')
+PossibleCIs <- c('norm','t','weightVar')
+CIs.tmp <- list(
+			'1' = c(1,2,3),
+			'2' = c(1,2,3),
+			'3' = c(1,2,3),
+			'4' = c(1,2,3),
+			'5' = c(1,2,3),
+			'6' = c(1,2,3),
+			'7' = c(2)
+			)
+CIs <- PossibleCIs[c(CIs.tmp[[currentWD]])]
 NumCI <- length(CIs)
 
+# Which type of objects are to be loaded in?
+ObjType.tmp <- list(
+	'1' = c('CIs','WeightedAvg'),
+	'2' = c('CIs','WeightedAvg'),
+	'3' = c('CIs','WeightedAvg'),
+	'4' = c('CIs','WeightedAvg'),
+	'5' = c('CIs','WeightedAvg'),
+	'6' = c('CIs','WeightedAvg'),
+	'7' = c('CIs')
+	)
+ObjType <- ObjType.tmp[currentWD]
+
+# Number of objects to be loaded in:
+	# * Scenario 1-6: CIs + the weighted average
+	# * Scenario 7: only t CI
+		# * Second column is for initilizing vectors, third for effective loading in objects
+NumObjects.tmp <- matrix(c(
+	1, NumCI*2 + 1,
+	2, NumCI*2 + 1,
+	3, NumCI*2 + 1,
+	4, NumCI*2 + 1,
+	5, NumCI*2 + 1,
+	6, NumCI*2 + 1,
+	7, NumCI * 2
+	),ncol=2,byrow=TRUE)
+NumEffObj <- NumObjects.tmp[currentWD,2]
 
 # Number of executed simulations
 nsim.tmp <- matrix(c(
@@ -108,15 +132,14 @@ nsim.tmp <- matrix(c(
                 4,1500,
                 5,500,
                 6,3000,
-								7,3000,
-								8,3000
+								7,3000
               ), ncol=2, byrow=TRUE)
 nsim <- nsim.tmp[currentWD,2]
-
+print(paste('Each scenario takes ', nsim, ' simulations before developing into a flower!', sep=''))
 
 # Dimension of brain
 DIM.tmp <- array(NA, dim=c(NUMDATAwd,3))
-	DIM.tmp[c(1,3,5,8),] <- c(16,16,16)
+	DIM.tmp[c(1,3,5),] <- c(16,16,16)
 	DIM.tmp[c(2,4),] <- c(1,1,1)
 	DIM.tmp[c(6,7),] <- c(2,2,2)
 DIM <- DIM.tmp[currentWD,]
@@ -171,13 +194,11 @@ source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGi
 ##
 
 ###############
-# Data has been pre-processed in the PreProcess.R file. All simulations are there being read in and combined.
+# Data has been pre-processed in the PreProcessExtended.R file. All simulations are there being read in and combined.
 	# Structue: each scenario = a list
 		# Each list: rows = voxels, columns = simulations
 # Load in these objects
-OBJECTS <- c('CI.upper.norm.All','CI.lower.norm.All','CI.upper.t.All',
-	'CI.lower.t.All','CI.upper.weightVar.All','CI.lower.weightVar.All',
-	'WeightedAvg.All')
+OBJECTS <- c('CI.upper.t.All', 'CI.lower.t.All')
 	NumObjects <- length(OBJECTS)
 for(i in 1:NumObjects){
 	load(paste(DATAwd[[currentWD]], '/Take',currentWD,'-',OBJECTS[i],sep=''))
@@ -188,23 +209,33 @@ for(i in 1:NumObjects){
 trueVal <- 0
 
 # CI coverages over all voxels and simulations
-mean.coverage.norm <-
-mean.coverage.t <-
-mean.coverage.weightVar <-
-mean.wAvg <-
-		array(NA,dim=c(prod(DIM),NumScen))
+mean.coverage.t <- array(NA,dim=c(prod(DIM),NumScen))
 
 # For loop over all scenarios
 for(s in 1:NumScen){
 	print(s)
-	mean.coverage.norm[,s] <- indicating(UPPER = CI.upper.norm.All[[s]], LOWER = CI.lower.norm.All[[s]], trueVal = trueVal)
 	mean.coverage.t[,s] <- indicating(UPPER = CI.upper.t.All[[s]], LOWER = CI.lower.t.All[[s]], trueVal = trueVal)
-	mean.coverage.weightVar[,s] <- indicating(UPPER = CI.upper.weightVar.All[[s]], LOWER = CI.lower.weightVar.All[[s]], trueVal = trueVal)
 }
 
 # Put the 3 CI coverages in a list
-mean.coverages <- list('norm' = mean.coverage.norm,'t' = mean.coverage.t, 'weightVar' = mean.coverage.weightVar)
+mean.coverages <- list('t' = mean.coverage.t)
 
+
+#### Here, we break it up a little bit and investigate some of the last scenarios
+OBJ <- try(load(paste(DATAwd[[currentWD]],'/',i,'/','SCEN_',s,'/',prefix[[currentWD]],gsub('.All', '', NameObj.All[o]),'_',i,sep='')),silent=TRUE)
+
+testLower <- c()
+testUpper <- c()
+for(i in 2000:2100){
+	load(paste('/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/IBMA/',i,'/SCEN_30/IBMA_CI.lower.t_',i,sep=''))
+	load(paste('/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/IBMA/',i,'/SCEN_30/IBMA_CI.upper.t_',i,sep=''))
+	testLower <- cbind(testLower,CI.lower.t)
+	testUpper <- cbind(testUpper,CI.upper.t)
+}
+
+
+
+str(OBJ)
 
 CI.coverages <- data.frame(
 	'Mean' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,mean)}),ncol=1),
@@ -222,14 +253,25 @@ CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
 	}
 
 
-
 WeightedAvg.All
 
 
 
 ##############################################
-# Weighted averages
-mean.wAvg <- array(NA,dim=c(prod(DIM),nsim,NumScen))
+# T statistic images from 3e level: last scenario
+S30TVal.lvl3 <- array(NA,dim=c(prod(DIM),nsim))
+# For loop
+for(i in 1:nsim){
+	values <- try(readNIfTI(paste(DATAwd[[currentWD]],'/',i,'/','SCEN_30/MA_stats/tstat1.nii',sep=''), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],silent=TRUE)
+	if(class(values)=='try-error')next
+	S30TVal.lvl3[,i] <- values
+}
+
+S30TVal.lvl3 <- S30TVal.lvl3[,c(1:2000)]
+S30TVal.lvl3N <- as.numeric(S30TVal.lvl3)
+hist(S30TVal.lvl3N)
+
+readNIfTI(paste(pmapDir,"/pval.nii.gz",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
 
 # Load in R objects
 INDICATOR <- seq(1,nsim,by=c(nsim/10))
