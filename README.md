@@ -9,6 +9,7 @@ Check the coverage of these intervals as well.
 * At the moment: only R files
 
 
+
 ## Getting started with Git
 * https://git-scm.com/doc
 * https://www.youtube.com/user/GitHubGuides/videos
