@@ -10,7 +10,7 @@ Check the coverage of these intervals as well.
 
 ## Getting started with Git
 * https://git-scm.com/doc
-* https://www.youtube.com/user/GitHubGuides/videos 
+* https://www.youtube.com/user/GitHubGuides/videos
 
 
 
