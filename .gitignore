@@ -1,0 +1,27 @@
+# Older code
+OldCode.R
+
+# R history files
+.Rapp.history
+.Rapp (Exemplaar met conflict van MacBook Air van Han 2016-01-25).history
+
+# Other files
+.DS_Store
+
+# Large files within Reports folder
+Reports/01_18_16
+Reports/01_25_16
+Reports/02_01_16
+Reports/02_15_16
+Reports/02_22_16/IBMA_coverages/IBMA_coverages_files
+Reports/02_22_16/IBMA_coverages/IBMA_coverages_cache
+Reports/02_22_16/Checks/CheckS_cache
+Reports/02_22_16/Report_Coverages_cache
+Reports/02_22_16/Report_Coverages_files
+Reports/03_01_16/IBMA_coverages/IBMA_coverages_cache
+Reports/03_01_16/IBMA_coverages/IBMA_coverages_files
+Reports/03_01_16/IBMAvsMA/IBMAvsMA_cache
+Reports/03_01_16/IBMAvsMA/IBMAvsMA_files
+Reports/03_01_16/Report_Coverages_cache
+Reports/03_01_16/Report_Coverages_files
+Reports/next
