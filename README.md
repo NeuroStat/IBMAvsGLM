@@ -4,6 +4,7 @@
 In this project, we try to simulate meta-analyses. We will then calculate effect size statistics and construct confidence intervals.
 Check the coverage of these intervals as well.
 
+
 ##Structure of folder
 * At the moment: only R files
 
