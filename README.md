@@ -31,14 +31,15 @@ Some R Objects that contain analyses are listed under RObjects. These are merely
 * https://www.youtube.com/user/GitHubGuides/videos
 
 
-First Modified: 12/01/16
-
 # Contact
-You can find me [here][Han Bossier].
-Or contact me through this [e-mail][Han.Bossier@Ugent.be].
+You can find me [here][Han Bossier]. \
+Or contact me through this [e-mail][Mail_Han].
 
-
+[Mail_Han]: Han.Bossier@Ugent.be
 [Han Bossier]: http://telefoonboek.ugent.be/nl/people/802001626303
 [Freya Acar]: https://telefoonboek.ugent.be/nl/people/802001860820
 [Ruth Seurinck]: http://telefoonboek.ugent.be/nl/people/801001629152
 [Beatrijs Moerkerke]: http://telefoonboek.ugent.be/nl/people/801001453542
+
+
+First Modified: 12/01/16
