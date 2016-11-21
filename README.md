@@ -32,7 +32,7 @@ Some R Objects that contain analyses are listed under RObjects. These are merely
 
 
 # Contact
-You can find me [here][Han Bossier]. \
+You can find me [here][Han Bossier]. /
 Or contact me through [e-mail](mailto: Han.Bossier@Ugent.be).
 
 [Han Bossier]: http://telefoonboek.ugent.be/nl/people/802001626303
