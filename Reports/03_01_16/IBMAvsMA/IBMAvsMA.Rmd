@@ -1,0 +1,582 @@
+---
+title: "MA vs GLM"
+author: "Han Bossier"
+date: "29 februari 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Introduction
+
+In this report, we will compare the performance of two methods to do an image based meta-analysis (IBMA) in an fMRI setting. We will carry out simulations after which we do some quality checks. Before we explain this more in detail, we discuss the two methods.
+
+### Classical approach.
+We term the first approach the classical method. This is because the approach originates from the medical literature in which meta-analysis is more advanced. The idea is to calculate a weighted average of the effect sizes of all studies contained in the meta-analysis. Then, we can construct a confidence interval (CI) around this weighted average. Details are given below:
+
+#### Mathematical definition
+Let us have $k$ studies with $\hat{\theta_i}$ the estimated effect size in study $i$. Consider for a meta-analysis the estimator for a weighted average ($\mu$) as:
+
+$$ \hat{\mu} = \frac{\sum_i\hat{w_i}\hat{\theta}_i}{\sum_i \hat{w_i}}$$ 
+with $\hat{w_i}$ the estimated optimal weights (either fixed or random effects meta-analysis). \
+The sampling variance of $\hat{\mu}$ is given by: 
+$$ V(\hat{\mu}) =\frac{1}{\sum_i\hat{w_i}}$$
+
+In the report *coverages*, we have investigated the optimal method to construct such a confidence interval. This is based on weighting the observed variance of $\hat{\mu}$ before constructing a t-based CI. \
+The weighted variance CI assumes a Student's *t* distribution with $k-1$ degrees of freedom. The sampling variance of $\hat{\mu}$ is extended by applying the following weighting scheme:
+$$ \hat{V_w}(\hat{\mu}) = \frac{\sum_i\hat{w_i}(\hat{\theta_i} - \hat{\mu})^2}{(k - 1)\sum_i\hat{w_i}} $$
+
+The CI around the weighted average effect size can then be calculated as:
+$$ \hat{\mu} \pm t_{k-1,1-\alpha/2}\sqrt{\hat{V_w}(\hat{\mu})} $$
+
+Note that by choosing the optimal weighting structure $\hat{w_i}$, we can either ignore between study variability (by choosing a fixed effects meta-analysis). Or incorporate this (random effects meta-analysis).
+
+### GLM approach.
+The GLM approach extends the traditional way to analyze an fMRI experiment. Typically, we will use a two-stage GLM when analyzing fMRI data. The first stage, within subjects, relates the design of the experiment to the observed BOLD signal in each voxel in the brain. The second stage pools subjects according to a group design (between subjects). In this stage, we can assume that the true signal varries between subjects (which is a mixed model). \
+At this stage, we can add an extra stage to the GLM procedure by re-using the mixed effects model at stage 2 with individual studies as input. Effectively, we get stage 1-2-3 leading to *within* subject - *between* subject - *between sudies*.
+
+#### Mathematical definition
+##### Level 1
+At each stage, we calculate the COPE and VARCOPES which are being sent to the next level in the GLM. \
+The 3 level GLM starts at the first level by relating the design of the experiment to the observed time series for each individual. For a given voxel and each subject *k*, we have:
+
+$$ Y_k = X_k\beta_k+\epsilon_k  $$
+
+With $Y_k$ the $T \times 1$ observed BOLD time series at that voxel, $X_k$ the $T \times p$ design matrix (containing *p* regressors), $\beta_k$ a $p \times 1$ vector of parameters and finally $\epsilon_k$ the $T \times 1$ error term. 
+The first level COPE map is estimated by:
+
+$$ c\hat{\beta}_k=c(X'_kX_k)^{-1}X'_kY_k $$
+
+Here we assume assume no autocorrelation in the time series. The VARCOPE map is calculated by:
+
+$$ \hat{Var}(c\hat{\beta}_k) = (X'_kX_k)^{-1}c'\hat{\sigma}^2_k $$
+With:
+$$ \hat{\sigma}^2_k = (Y - X\hat{\beta}_k)'(Y - X\hat{\beta}_k)/(T - p) $$
+
+##### Level 2
+The second level GLM, we apply a group model:
+
+$$ Y_G = X_G\beta_G+\epsilon^{*}_G $$
+With $X_G$ the $N \times p_G$ group-level design matrix, $\beta_G$ the group level parameter vector and $\epsilon^{*}_G$ the imperfect estimated group error (due to using first level contrasts) vector in which $Var(\epsilon_G)$ contains both intrasubject as well as between-subject variance. The group level parameters are estimated through:
+
+$$ \hat{\beta_G} = X^{-}_GY_G $$ In which $^{-}$ denotes the pseudo-inverse. \
+The GLS approach which is used in FSL's FLAME1 mixed effects approach assumes that:
+$$ Var(\epsilon^{*}_G) = \sigma^2I_N + Var_{\beta}(Y_G) $$ 
+
+In which the $\beta$ subscript denotes this being intrasubject variance. The estimates of these variances are used from the first level. The $\sigma^2_G$ is estimated through an iterative estimation algorithm (pressumable REML).
+
+##### Level 3
+Finally, the third level repeats the second level with the object of interest now being studies instead of subjects. Hence, we apply a study model:
+
+$$ Y_S = X_S\beta_S+\epsilon^{**}_S $$
+
+We then end by calculating a confidence interval around the contrast of parameter estimates (the beta coefficients belonging to the contrast of interest). We hereby assume a *t* distribution:
+
+$$ \hat{\beta}_S \pm t_{k-1,1-\alpha/2}\sqrt{\hat{Var}(\hat{\beta}_S)} $$
+
+## Performance
+We will check the performance of the two methods by running simulations after which we calculate the:
+
+  1. standardized bias
+  2. average confidence interval length
+  3. coverage.
+  
+Consider the estimate of interest $\hat{\theta}$ either being the weighted average in the classical meta-analysis or the $\beta_S$ parameter in the third level GLM. Then the standardized bias is defined as:
+
+$$ \left(\frac{\bar{\hat{\theta}} - \theta}{SE(\hat{\theta})})\right) \times 100 $$
+
+The average confidence interval length is obtained by subtracting the upper limit of the CI from the lower limit and dividing by $B$, the number of simulations. \
+The coverage is the proportion of times the $100 (1 - \alpha)\%$ CI contains the true value $\theta = 0$.
+
+## Simulation
+In order to obtain results, we simulate fMRI data on a grid of 4 x 4 x 4 voxels. The fMRI analysis consists of one blocked design condition (20 sec ON/OFF) with a TR of 2 sec and a total of 200 scans. We have 100 subjects in 5 studies. We start with 3000 simulations.
+
+
+### Data generation.
+Data is being generated in R using neuRosim (code is being simplified):
+
+
+
+
+```{r eval=FALSE}
+# Global options
+nsub <- 100
+nstud <- 5
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+onsets <- list(on1)
+duration <- list(20)
+effect.null <- list(0)                              ## No effect
+effect <- list(1) 			                            ## Effect of 1 for creating designmatrix
+DIM <- c(4,4,4)
+
+####************####
+#### Design matrices
+####************####
+# Design Matrices via neuRosim:
+#     * We need two design vectors:
+#      * The first one will be the column of the design matrix in the analysis.
+#      * The second one is used to generate data with a NULL effect.
+design.Cond1 <- simprepTemporal(onsets = list(on1), durations = list(duration[[1]]),
+                       hrf = "double-gamma", TR = TR, totaltime = total,
+                       effectsize = list(effect[[1]]))
+
+design.null <- simprepTemporal(regions = 1, onsets = onsets, durations = duration,
+                       hrf = "double-gamma", TR = TR, totaltime = total,
+                       effectsize = effect.null)
+
+# X-matrix in order to fit the model later on.
+x <- matrix(c(simTSfmri(design.Cond1, nscan=nscan, TR=TR, noise="none")),ncol=1)
+
+####************####
+#### GENERATE DATA
+####************####
+# For loop over studies
+for(t in 1:nstud){
+  # For loop over nsub
+  for(s in 1:nsub){
+    # Define the regions (which does nothing as there is no effect, )
+    regions <- simprepSpatial(regions = 1, coord = c(4,4,4), radius = list(1), form ="cube", fading = 0)
+
+    # Weighting structure.
+    #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
+    w <- c(1,0,0,0,0,0)
+
+    # Base value
+    base <- 5
+
+    # Actual simulated data
+    sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+                 type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+      # Transform it to correct dimension (Y = t x V)
+      Y.data <- t(matrix(sim.data,ncol=nscan))
+
+#[...] continue with for loop below
+```
+
+The first level GLM is done as follow:
+```{r eval=FALSE}
+    ####************####
+    #### ANALYZE DATA: 1e level GLM
+    ####************####
+
+    # Fitting GLM model.
+    model.lm <- lm(Y.data ~ x)
+    b1 <- coef(model.lm)['x',]
+    COPE[,s] <- b1
+
+      # Estimate residual (we need to extend the design matrix with an intercept)
+      xIN <- cbind(1,x)
+      BETA <- coef(model.lm)
+      res <- (t(Y.data - xIN %*% BETA) %*% (Y.data - xIN %*% BETA))/nscan - 2
+      res <- diag(res)
+      # Contrast: not interested in intercept
+      CONTRAST <- matrix(c(0,1),nrow=1)
+    # Calculate varcope
+    VARCOPE[,s] <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST) %*% res
+  } # END of subject part in FOR loop
+#[...] continue with for loop below
+```
+
+For the second level of the GLM, we will use FSL from within R. We need to write some auxiliarly files which FSL will use. We can skip that code (though shown below). \
+At the end of this block of code, we save the effect size, which is a transformation of the *T*-map to Hedges' *g* based on a one-sample design. We then calculate the variance of the effect size in order to use it later on. 
+
+```{r eval=FALSE}
+  ####************####
+  #### GROUP ANALYSIS: 2e level using FLAME
+  ####************####
+
+  # Write auxiliarly files to DataWrite. We need:
+    # GRCOPE in nifti
+    # GRVARCOPE in nifti
+    # 4D mask
+    # design.mat file
+    # design.grp file
+    # design.con file
+
+    #----- 1 ----#
+    ### Design.mat
+    fileCon <- paste(DataWrite,"/design.mat",sep="")
+    # Text to be written to the file
+    cat('/NumWaves\t1
+    /NumPoints\t',paste(nsub,sep=''),'
+    /PPheights\t\t1.000000e+00
+
+    /Matrix
+    ',rep("1.000000e+00\n",nsub),file=fileCon)
+
+    #----- 2 ----#
+    ### Design.con
+    fileCon <- file(paste(DataWrite,"/design.con", sep=""))
+    	writeLines('/ContrastName1	Group Average
+    /NumWaves	1
+    /NumContrasts	1
+    /PPheights		1.000000e+00
+    /RequiredEffect		5.034
+
+    /Matrix
+    1.000000e+00
+    ',fileCon)
+    close(fileCon)
+
+      #----- 3 ----#
+      ### Design.grp
+    fileCon <- paste(DataWrite,"/design.grp",sep="")
+    # Text to be written to the file
+    cat('/NumWaves\t1
+    /NumPoints\t',paste(nsub,sep=''),'
+
+    /Matrix
+    ',rep("1\n",nsub),file=fileCon)
+
+    #----- 4 ----#
+    ### COPE.nii
+    GRCOPE4D <- nifti(img=array(COPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
+    writeNIfTI(GRCOPE4D, filename = paste(DataWrite,'/GRCOPE',sep=''),gzipped=FALSE)
+
+    #----- 5 ----#
+    ### VARCOPE.nii
+    GRVARCOPE4D <- nifti(img=array(VARCOPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
+    writeNIfTI(GRVARCOPE4D, filename = paste(DataWrite,'/GRVARCOPE',sep=''),gzipped=FALSE)
+
+    #----- 6 ----#
+    ### mask.nii
+    mask <- nifti(img=array(1, dim=c(DIM,nsub)), dim=c(DIM,nsub), datatype=2)
+    writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
+
+    # FSL TIME!
+    setwd(DataWrite)
+    command <- paste(fslpath, 'flameo --cope=GRCOPE --vc=GRVARCOPE --mask=mask --ld=study',t,'_stats --dm=design.mat --cs=design.grp --tc=design.con --runmode=flame1', sep='')
+    Sys.setenv(FSLOUTPUTTYPE="NIFTI")
+    system(command)
+
+    # Put the result of pooling subjects in a vector for the COPE and VARCOPE
+    STCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+    STVARCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+
+    ## WE WILL NEED TO HAVE THE ES WITH ITS VARIANCE FOR THE FIRST APPROACH:
+    # Load in T-map
+    STMAP <- readNIfTI(paste(DataWrite,"/study",t,"_stats/tstat1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+    # Transform to an ES using hedgeG function, for each study
+    HedgeG <- apply(matrix(STMAP,ncol=1),1,FUN=hedgeG,N=nsub)
+    # Calculate variance of ES
+    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
+    # Weights of this study
+    weigFix <- 1/VarianceHedgeG
+    # Now put in a vector
+    STHEDGE[,t] <- HedgeG
+    STWEIGHTS[,t] <- weigFix
+} # End of study part in FOR loop
+```
+
+
+Now we have the final part which is either calculating a CI around a weighted average (classical approach), or extending the GLM with a third fase, again using FSL's FLAME1.
+Note that so far, both methods use the same data and analysis procedure (which is a mixed effects approach).
+
+```{r eval=FALSE}
+####************####
+#### META-ANALYSIS: classical approach
+####************####
+# Calculate weighted average.
+MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS),1,sum))/(apply(STWEIGHTS,1,sum))
+
+# CI for weighted average based on weighted variance CI
+CI.MA.weightedVariance <- (apply((STWEIGHTS*(STHEDGE - MA.WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(STWEIGHTS,1,sum))
+CI.MA.upper.weightVar <- matrix(MA.WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
+CI.MA.lower.weightVar <- matrix(MA.WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
+
+####************####
+#### META-ANALYSIS: GLM - level 3 using FLAME
+####************####
+# Write auxiliarly files to DataWrite. We need:
+  # STCOPE in nifti
+  # STVARCOPE in nifti
+  # 4D mask
+  # design.mat file
+  # design.grp file
+  # design.con file
+
+  #----- 1 ----#
+  ### Design.mat
+  fileCon <- paste(DataWrite,"/STdesign.mat",sep="")
+  # Text to be written to the file
+  cat('/NumWaves\t1
+  /NumPoints\t',paste(nstud,sep=''),'
+  /PPheights\t\t1.000000e+00
+
+  /Matrix
+  ',rep("1.000000e+00\n",nstud),file=fileCon)
+
+  #----- 2 ----#
+  ### Design.con
+  fileCon <- file(paste(DataWrite,"/STdesign.con", sep=""))
+  	writeLines('/ContrastName1	Group Average
+  /NumWaves	1
+  /NumContrasts	1
+  /PPheights		1.000000e+00
+  /RequiredEffect		5.034
+
+  /Matrix
+  1.000000e+00
+  ',fileCon)
+  close(fileCon)
+
+  #----- 3 ----#
+  ### Design.grp
+  fileCon <- paste(DataWrite,"/STdesign.grp",sep="")
+  # Text to be written to the file
+  cat('/NumWaves\t1
+  /NumPoints\t',paste(nstud,sep=''),'
+
+  /Matrix
+  ',rep("1\n",nstud),file=fileCon)
+
+  #----- 4 ----#
+  ### STCOPE.nii
+  STCOPE4D <- nifti(img=array(STCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
+  writeNIfTI(STCOPE4D, filename = paste(DataWrite,'/STCOPE',sep=''),gzipped=FALSE)
+
+  #----- 5 ----#
+  ### VARCOPE.nii
+  STVARCOPE4D <- nifti(img=array(STVARCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
+  writeNIfTI(STVARCOPE4D, filename = paste(DataWrite,'/STVARCOPE',sep=''),gzipped=FALSE)
+
+  #----- 6 ----#
+  ### mask.nii
+  mask <- nifti(img=array(1, dim=c(DIM,nstud)), dim=c(DIM,nstud), datatype=2)
+  writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
+
+# FSL TIME!
+setwd(DataWrite)
+command <- paste(fslpath, 'flameo --cope=STCOPE --vc=STVARCOPE --mask=mask --ld=MA_stats --dm=STdesign.mat --cs=STdesign.grp --tc=STdesign.con --runmode=flame1', sep='')
+Sys.setenv(FSLOUTPUTTYPE="NIFTI")
+system(command)
+
+### Now CI around COPE
+IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
+IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
+  # Degrees of freedom:
+  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[1,1,1]
+
+CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
+CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
+```
+
+
+
+
+
+
+
+```{r echo=FALSE}
+# Set starting seed
+set.seed(11121990)
+# wd
+wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit"
+# Directories of the data for different takes
+DATAwd <- list(
+  'Take[MAvsIBMA]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA"
+	)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 1
+# Number of conficence intervals
+CIs <- c('MA-weightVar','GLM-t')
+NumCI <- length(CIs)
+# Number of executed simulations
+nsim.tmp <- matrix(c(
+                1,3000
+              ), ncol=2, byrow=TRUE)
+nsim <- nsim.tmp[currentWD,2]
+# Number of subjects and studies
+nsub <- 100
+nstud <- 5
+# Dimension of brain
+DIM.tmp <- array(NA, dim=c(NUMDATAwd,3))
+	DIM.tmp[c(1),] <- c(4,4,4)
+DIM <- DIM.tmp[currentWD,]
+# True value
+trueVal <- 0
+# Load in libraries
+library(AnalyzeFMRI)
+library(fmri)
+library(lattice)
+library(gridExtra)
+library(oro.nifti)
+library(ggplot2)
+library(reshape2)
+library(RColorBrewer)
+library(Hmisc)
+library(devtools)
+library(neuRosim)
+library(scatterplot3d)
+# Function for data wrangling: indicator for CI and true value
+indicating <- function(UPPER, LOWER, trueVal){
+	IND <- trueVal >= LOWER & trueVal <= UPPER
+	COVERAGE <- apply(IND, 1, mean, na.rm=TRUE)
+	return(COVERAGE)
+}
+# Load in functions from FixRan study
+source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
+```
+
+```{r echo=FALSE}
+##
+###############
+### Data Wrangling
+###############
+##
+AllData <- c()
+# Load in the data
+for(i in 1:nsim){
+  load(paste(DATAwd[[currentWD]],'/',i,'/SCEN_1/ObjectsMAvsIBMA_',i,sep=''))
+  AllData <- c(AllData, matrix(unlist(ObjectsMAvsIBMA), ncol=1))
+}
+  # Make nsim number of columns
+  AllData <- matrix(AllData,ncol=nsim)
+#########################################################
+###################### CI COVERAGE ######################
+#########################################################
+# Calculate coverage
+mean.coverage.weightVar.MA <-
+mean.coverage.t.IBMA <-
+array(NA,dim=c(prod(DIM),1))
+load(paste(DATAwd[[currentWD]],'/1/SCEN_1/ObjectsMAvsIBMA_1',sep='')); objects <- names(ObjectsMAvsIBMA); rm(ObjectsMAvsIBMA)
+OBJ.ID <- rep(objects,each=prod(DIM))
+mean.coverage.weightVar.MA[,1] <- indicating(UPPER = AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),],LOWER = AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),],trueVal = trueVal)
+mean.coverage.t.IBMA[,1] <- indicating(UPPER = AllData[which(OBJ.ID=='CI.IBMA.upper.t'),],LOWER = AllData[which(OBJ.ID=='CI.IBMA.lower.t'),],trueVal = trueVal)
+
+# Put the 2 coverages in a list
+mean.coverages <- list('MA' = mean.coverage.weightVar.MA,'IBMA' = mean.coverage.t.IBMA)
+
+# Mean over all voxels
+CI.coverages <- data.frame(
+	'Mean' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,mean)}),ncol=1),
+	'SD' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,sd)}),ncol=1),
+	'CI' = factor(CIs, levels=CIs, labels=CIs)
+	)
+#########################################################
+####################### CI LENGTH #######################
+#########################################################
+# Calculate CI length
+mean.length.weightVar.MA <-
+mean.length.t.IBMA <-
+array(NA,dim=c(prod(DIM),1))
+
+mean.length.weightVar.MA[,1] <- apply(AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),] - AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),],1,mean)
+mean.length.t.IBMA[,1] <- apply(AllData[which(OBJ.ID=='CI.IBMA.upper.t'),] - AllData[which(OBJ.ID=='CI.IBMA.lower.t'),],1,mean)
+
+
+# Put the 2 lengths in a list
+mean.lengths <- list('MA' = mean.length.weightVar.MA,'IBMA' = mean.length.t.IBMA)
+
+# Average over all voxels
+CI.lengths <- data.frame(
+	'Mean' = matrix(sapply(mean.lengths, FUN=function(...){apply(...,2,mean)}),ncol=1),
+	'SD' = matrix(sapply(mean.lengths, FUN=function(...){apply(...,2,sd)}),ncol=1),
+	'CI' = factor(CIs, levels=CIs, labels=CIs)
+	)
+#########################################################
+################### STANDARDIZED BIAS ###################
+#########################################################
+MA.SDBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,sd)
+MA.MEANBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,mean)
+
+IBMA.SDBETA <- apply(AllData[which(OBJ.ID=='IBMA.COPE'),],1,sd)
+IBMA.MEANBETA <- apply(AllData[which(OBJ.ID=='IBMA.COPE'),],1,mean)
+
+mean.bias.MA <- matrix(((abs(MA.MEANBETA)-trueVal)/(MA.SDBETA))*100,ncol=1)
+mean.bias.IBMA <- matrix(((abs(IBMA.MEANBETA)-trueVal)/(IBMA.SDBETA))*100,ncol=1)
+
+# Put the 2 bias values in a list
+mean.bias <- list('MA' = mean.bias.MA,'IBMA' = mean.bias.IBMA)
+
+# Average over all voxels
+CI.bias <- data.frame(
+	'Mean' = matrix(sapply(mean.bias, FUN=function(...){apply(...,2,mean)}),ncol=1),
+	'SD' = matrix(sapply(mean.bias, FUN=function(...){apply(...,2,sd)}),ncol=1),
+	'CI' = factor(CIs, levels=CIs, labels=c('MA', 'GLM'))
+	)
+```
+
+
+First we plot the distribution of either the weighted average (classical approach) or the *T*-values (GLM approach), averaged over all simulations (*B* = 3000). Hence we see the distribution over the 64 voxels. \
+Directly below, we look at the standardized bias, averaged over all simulations (64 voxels plotted on an 8 x 8 grid).
+
+```{r echo=FALSE, fig.align='center', fig.width=9}
+# Function for levelplot
+ValuesOnLevelPlot2D <- function(x, y, z, ...) {
+    panel.levelplot(x,y,z,...)
+    panel.text(x, y, round(z,3),col='red')
+}
+
+# Plotting the distribution of either weighted average or COPE-value
+WA_density <- ggplot(data.frame('value' = MA.MEANBETA), aes(x=value)) + geom_density(fill='#1b9e77')
+COPE_density <- ggplot(data.frame('value' = IBMA.MEANBETA), aes(x=value)) + geom_density(fill='#7570b3')
+grid.arrange(WA_density, COPE_density, nrow=1, top = textGrob('Average density (over all simulations) of weighted average/COPE', gp=gpar(fontsize=14,font=1)))
+```
+
+```{r echo=FALSE, fig.align='center', fig.width=12, fig.height=7}
+# Plotting the standardized bias
+BCI1 <- levelplot(array(mean.bias[['MA']], dim=rep(sqrt(prod(DIM)),2)),
+      col.regions = gray(100:0/100), at=seq(0,ceiling(max(unlist(mean.bias))),length.out=100), main='Meta-Analysis',xlab='',ylab='',
+        colorkey = list(space = "bottom"),
+               panel=ValuesOnLevelPlot2D)
+BCI2 <- levelplot(array(mean.bias[['IBMA']], dim=rep(sqrt(prod(DIM)),2)),
+      col.regions = gray(100:0/100), at=seq(0,ceiling(max(unlist(mean.bias))),length.out=100), main='3 level GLM',xlab='',ylab='',
+              colorkey = list(space = "bottom"),
+              panel=ValuesOnLevelPlot2D)
+grid.arrange(BCI1,BCI2,nrow=1, heights = unit(16, "cm"),
+             top = textGrob('Standardized bias (%) of each voxel over 3000 simulations.', gp=gpar(fontsize=14,font=1)))
+```
+
+If we average over these voxels, we get:
+```{r echo=FALSE}
+CI.bias
+```
+
+Next, we look at the average CI length. Again, we start with the average over all simulations, after which we average over all voxels.
+```{r echo=FALSE, fig.align='center', fig.width=12, fig.height=7}
+# Plotting the lengths
+LCI1 <- levelplot(array(mean.lengths[['MA']], dim=rep(sqrt(prod(DIM)),2)),
+      col.regions = gray(100:0/100), at=seq(0,1,by=0.05), main='Meta-Analysis',xlab='',ylab='',
+        colorkey = list(space = "bottom"),
+               panel=ValuesOnLevelPlot2D)
+LCI2 <- levelplot(array(mean.lengths[['IBMA']], dim=rep(sqrt(prod(DIM)),2)),
+      col.regions = gray(100:0/100), at=seq(0,1,by=0.05), main='3 level GLM',xlab='',ylab='',
+              colorkey = list(space = "bottom"),
+              panel=ValuesOnLevelPlot2D)
+grid.arrange(LCI1,LCI2,nrow=1,heights = unit(16, "cm"),
+             top = textGrob('CI - Length of each voxel over 3000 simulations.', gp=gpar(fontsize=14,font=1)))
+```
+
+```{r echo=FALSE}
+CI.lengths
+```
+
+Finally, we look at the emperical coverage:
+
+```{r echo=FALSE, fig.align='center', fig.width=12, fig.height=7}
+# Plotting the coverages
+CCI1 <- levelplot(array(mean.coverages[['MA']], dim=rep(sqrt(prod(DIM)),2)),
+      col.regions = gray(0:100/100), at=seq(0.75,1,by=0.05), main='Meta-Analysis',xlab='',ylab='',
+        colorkey = list(space = "bottom"),
+               panel=ValuesOnLevelPlot2D)
+CCI2 <- levelplot(array(mean.coverages[['IBMA']], dim=rep(sqrt(prod(DIM)),2)),
+      col.regions = gray(0:100/100), at=seq(0.75,1,by=0.05), main='3 level GLM',xlab='',ylab='',
+              colorkey = list(space = "bottom"),
+              panel=ValuesOnLevelPlot2D)
+grid.arrange(CCI1,CCI2,nrow=1,heights = unit(16, "cm"),
+             top = textGrob('CI - Coverage of each voxel over 3000 simulations.', gp=gpar(fontsize=14,font=1)))
+```
+
+```{r echo=FALSE}
+CI.coverages
+```

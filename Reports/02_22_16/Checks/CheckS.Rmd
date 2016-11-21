@@ -1,0 +1,197 @@
+---
+title: "Checking some fMRI analysis procedures."
+author: "Han Bossier"
+date: "19 februari 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+## Introduction
+
+In this small report, I will generate an fMRI time series for 100 subjects. The experiment consists of a simple blocked design (one condition, ON/OFF for 20 sec each). The TR = 2 sec, there are in total 200 scans. The data consists of a null effect in a small grid of 2 x 2 x 2 voxels (total of 8 voxels). I will then relate the design of the experiment within subjects to the simulated time series through either the *lm* function in R, or by manually calculating the estimates ($\hat{\beta}$).\
+After all subjects are processed, we will go the second level GLM in which we estimate the group estimates manually or by averaging the individual $\hat{\beta}$ estimates. Then we proceed to calculating the test statistic by applying a simple OLS procedure. This is similar as a one sample t-test (only one group of subjects). Hence we both use the function *t.test* as well manually calculating the T-map.
+
+
+```{r echo=FALSE}
+# Load in libraries
+library(AnalyzeFMRI)
+library(fmri)
+library(lattice)
+library(gridExtra)
+library(oro.nifti)
+library(ggplot2)
+library(reshape2)
+library(RColorBrewer)
+library(Hmisc)
+library(devtools)
+library(neuRosim)
+library(MASS)
+# Load in functions from FixRan study: THIS HAS TO COME AFTER ALL LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
+  source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
+```
+
+We start with some global options for simulating the data:
+
+```{r}
+####************####
+#### Global options
+####************####
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+onsets <- list(on1)
+duration <- list(20)
+effect.null <- list(0)        ## No effect
+effect <- list(1)             ## Effect of 1 for designmatrix
+DIM <- c(2,2,2)
+nsub <- 100
+
+TrueLocations <- c(4,4,4)
+TrueWhiteNoise <- c(1,0,0,0,0,0)
+TrueRadius <- 1
+COPE <- VARCOPE <- TMAP <- array(NA,dim=c(prod(DIM),nsub))
+
+####************####
+#### Design matrices
+####************####
+# Design Matrices via neuRosim:
+#     * We need two design vectors:
+#     * The first one have an intercept (needed for analysis).
+#        * This will be the column of the design matrix in the analysis.
+#     * The second one is used to generate data with a NULL effect.
+design.Cond1 <- simprepTemporal(onsets = list(on1), durations = list(duration[[1]]),
+                       hrf = "double-gamma", TR = TR, totaltime = total,
+                       effectsize = list(effect[[1]]))
+
+design.null <- simprepTemporal(regions = 1, onsets = onsets, durations = duration,
+                       hrf = "double-gamma", TR = TR, totaltime = total,
+                       effectsize = effect.null)
+
+# X-matrix in order to fit the model later on.
+x <- matrix(c(simTSfmri(design.Cond1, nscan=nscan, TR=TR, noise="none")),ncol=1)
+```
+
+Now consider the case for one subject ($s=1$):
+
+```{r}
+s <- 1
+# Define two regions (which does nothing as there is no effect, )
+regions <- simprepSpatial(regions = 1, coord = TrueLocations, radius = list(TrueRadius), form ="cube", fading = 0)
+
+# Weighting structure.
+#   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
+w <- TrueWhiteNoise
+
+# Base value
+base <- 5
+
+# Actual simulated data
+sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+             type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+  # Transform it to correct dimension (Y = t x V)
+  Y.data <- t(matrix(sim.data,ncol=nscan))
+
+####************####
+#### ANALYZE DATA: 1e level
+####************####
+
+# Fitting GLM model.
+model.lm <- lm(Y.data ~ x)
+b1 <- coef(model.lm)['x',]
+COPE[,s] <- b1
+# Manual calculate COPE values:
+  # Design matrix: extended with 1's for the intercept
+  xIn <- cbind(1,x)
+  # Contrast: 0,1 as we are not interested in b0
+  CONTRAST <- c(0,1)
+manb1 <- CONTRAST %*% (solve(t(xIn) %*% xIn )) %*% t(xIn) %*% Y.data
+
+```
+
+We can now compare the object b1 and the manually calculated b1's:
+
+```{r}
+VisualCheckSub <- cbind(c(b1),c(manb1)) ;VisualCheckSub
+```
+
+
+Now let's continue and process 100 subjects:
+```{r}
+# For loop over nsub
+for(s in 1:nsub){
+  # Define two regions (which does nothing as there is no effect, )
+  regions <- simprepSpatial(regions = 1, coord = TrueLocations, radius = list(TrueRadius), form ="cube", fading = 0)
+
+  # Weighting structure.
+  #   * Order = white, temporal, low-frequency, physyiological, task related and spatial.
+  w <- TrueWhiteNoise
+
+  # Base value
+  base <- 5
+
+  # Actual simulated data
+  sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+               type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+    # Transform it to correct dimension (Y = t x V)
+    Y.data <- t(matrix(sim.data,ncol=nscan))
+
+  ####************####
+  #### ANALYZE DATA: 1e level
+  ####************####
+
+  # Fitting GLM model.
+  model.lm <- lm(Y.data ~ x)
+  b1 <- coef(model.lm)['x',]
+  COPE[,s] <- b1
+}
+```
+
+We now check the second level analysis:
+
+```{r}
+####************####
+#### GROUP ANALYSIS: 2e level
+####************####
+
+# Group COPE (average)
+GCOPE <- apply(COPE,1,mean,na.rm=TRUE)
+  # Manual calculate group COPE values:
+  Xg <- matrix(1,nrow=nsub)
+    # We need the pseudo inverse of Xg, use function ginv from package MASS
+      # pseudo inverse can also be calculated as:
+      PseudInver <- solve(t(Xg) %*% Xg) %*% t(Xg)
+  manGCOPE <- ginv(Xg) %*% t(COPE)
+
+# Now we will do the OLS estimation of the variance
+GVARCOPE <- apply(COPE,1,var,na.rm=TRUE)
+
+# TMAP
+GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub))
+
+# Now check this T-map
+manT.test <- apply(COPE,1,t.test)
+  manT.val.tmp <- unlist(manT.test)
+manT.val <- as.numeric(manT.val.tmp[names(manT.val.tmp)=='statistic.t'])
+```
+
+We compare the function *ginv()* for calculating a pseudo-inverse with the object *PseudInver*, the objects *GCOPE* and manually calculated second level COPES (*manGCOPE*) and finally the t-map calculated by applying the function *t.test* and our manually calculated *GTMAP*.
+```{r}
+# Pseudo-inverse: only look at first value
+PSINVER <- cbind(c(PseudInver[1]),c(ginv(Xg)[1]));PSINVER
+  # Is the rest the same?
+  all.equal(PseudInver,ginv(Xg))
+# GCOPE
+VisualCheckGCOPE <- cbind(c(GCOPE),c(manGCOPE));VisualCheckGCOPE
+# T-map
+VisualCheckTval <- data.frame(GTMAP,manT.val);VisualCheckTval
+```
+
+
