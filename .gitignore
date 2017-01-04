@@ -4,9 +4,22 @@ OldCode.R
 # R history files
 .Rapp.history
 .Rapp (Exemplaar met conflict van MacBook Air van Han 2016-01-25).history
+.Rhistory
 
-# Other files
+# OS generated files
 .DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+workflow.sublime-workspace
+
+# Larger files associated with RMarkdown and knitr cache
+/*_cache/
+/cache/
+/*_files/
+/files/
 
 # Large files within Reports folder
 Reports/01_18_16
