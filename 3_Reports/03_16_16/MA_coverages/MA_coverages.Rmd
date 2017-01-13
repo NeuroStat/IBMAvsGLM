@@ -1,0 +1,1644 @@
+---
+title: "Coverages of confidence intervals in a meta-analysis"
+author: "Han Bossier"
+date: "4 februari 2016"
+output: html_document
+---
+
+
+## Introduction
+In this report, I will combine different scenario's that are tested to calculate the emperical coverage of the confidence intervals around weighted averages in a meta-analysis.
+The scenario are:
+
+  1. CI around weighted average from standardized mean-difference in two-sample test.
+  2. CI around weighted average from standardized mean-difference in one-sample test.
+  3. CI around weighted average from transforming t-value in linear regression.
+  4. CI around weighted average from a univariate fMRI voxel.
+  5. CI around weighted average from a 16x16x16 brain.
+  6. CI around weighted average in a univariate fMRI voxel with increasing sample size and studies.
+  7. CI around weighted average in a multivariate fMRI setting with increasing sample size and studies.
+  8. CI around weighted average in simple block design 2 x 2 x 2 multivariate fMRI setting.
+  9. CI around weighted average in simple block design 16 x 16 x 16 multivariate fMRI setting.
+  
+
+We will consider 3 types of CI:
+
+  1. The *z* distribution CI
+  2. The *t* distribution CI
+  3. The weighted variance CI
+  
+#### Mathematical definition
+Let us have $k$ studies with $\hat{\theta_i}$ the estimated effect size in study $i$. Consider for a meta-analysis the estimator for a weighted average ($\mu$) as:
+
+$$ \hat{\mu} = \frac{\sum_i\hat{w_i}\hat{\theta}_i}{\sum_i \hat{w_i}}$$ 
+with $\hat{w_i}$ the estimated optimal weights (either fixed or random effects meta-analysis). \
+The sampling variance of $\hat{\mu}$ is given by: 
+$$ V(\hat{\mu}) =\frac{1}{\sum_i\hat{w_i}}$$
+
+******************************************************
+******************************************************
+##### $z$ distribution CI
+The *z* distribution based CI around the weighted average effect size is defined as:
+$$ \hat{\mu} \pm z_{1-\alpha/2}\sqrt{\hat{V}(\hat{\mu})} $$
+
+##### $t$ distribution CI
+The *t* distribution CI with $k-1$ degrees of freedom is calculated as:
+$$ \hat{\mu} \pm t_{k-1,1-\alpha/2}\sqrt{\hat{V}(\hat{\mu})} $$
+
+##### weighted variance CI
+The weighted variance CI assumes a Student's *t* distribution with $k-1$ degrees of freedom. The sampling variance of $\hat{\mu}$ is extended by applying the following weighting scheme:
+$$ \hat{V_w}(\hat{\mu}) = \frac{\sum_i\hat{w_i}(\hat{\theta_i} - \hat{\mu})^2}{(k - 1)\sum_i\hat{w_i}} $$
+
+The CI around the weighted average effect size can then be calculated as:
+$$ \hat{\mu} \pm t_{k-1,1-\alpha/2}\sqrt{\hat{V_w}(\hat{\mu})} $$
+
+******************************************************
+******************************************************
+
+
+```{r include=FALSE}
+####################
+#### TITLE:     Simulate null data to calculate CI on ES and its coverage.
+#### Contents:
+####
+#### Source Files: /Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/simulNull.R
+#### First Modified: 12/01/2016
+#### Notes:
+#################
+
+
+# Reset working directory
+rm(list=ls())
+gc(verbose = FALSE)
+
+# Date of today
+date <- Sys.Date()
+
+# Set starting seed
+set.seed(11121990)
+
+# Set WD
+wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit"
+
+
+# Load in libraries
+library(AnalyzeFMRI)
+library(fmri)
+library(lattice)
+library(gridExtra)
+library(oro.nifti)
+library(ggplot2)
+library(reshape2)
+library(RColorBrewer)
+library(Hmisc)
+library(devtools)
+library(neuRosim)
+
+# Load in functions from FixRan study
+source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
+
+```
+
+
+## Scenario 1: standardized mean-difference in two-sample test
+We start with simulating two groups $X_1$ and $X_2$ that do not differ from each other. There are 15 subjects in each group. Each meta-analysis contains 20 studies. 
+In each simulation, we first calculate the effect size and its variance as following:
+
+```{r eval=FALSE}
+# True value
+trueVal <- 0
+# Subjects in first group
+X1 <- trueVal + rnorm(n=N1,mean=0,sd=2)
+S2_X1 <- var(X1)
+# Second group
+X2 <- trueVal + rnorm(n=N2,mean=0,sd=2)
+S2_X2 <- var(X2)
+# Sample variance
+Swithin <- sqrt((((N1-1)*S2_X1)+((N2-1)*S2_X2))/(N1 + N2 - 2))
+# Cohen d
+d <- (mean(X1) - mean(X2))/Swithin
+# Variance
+Vd <- (N1+N2)/(N1*N2) + (d^2/(2*(N1+N2)))
+```
+Which we will loop through until we have 20 studies. The values d and Vd are stored in a vector. The meta-analysis part, then consists of:
+```{r eval=FALSE}
+# Weights
+W <- 1/Vd
+# Weighted mean
+wMean <- sum(W*d)/sum(W)
+# Variance of summary effect
+varSum <- 1/sum(W)
+# Confidence intervals
+CI.upper.norm[i] <- wMean + (1.96 * sqrt(varSum))
+CI.lower.norm[i] <- wMean - (1.96 * sqrt(varSum))
+
+CI.upper.t[i] <- wMean + (qt(0.975,df=nstud-1) * sqrt(varSum))
+CI.lower.t[i] <- wMean - (qt(0.975,df=nstud-1) * sqrt(varSum))
+
+CI.weightedVariance <- sum(W*(dStud - wMean)**2)/((nstud - 1) * sum(W))
+CI.upper.weightVar[i] <- wMean + (qt(0.975,df=nstud-1) * sqrt(CI.weightedVariance))
+CI.lower.weightVar[i] <- wMean - (qt(0.975,df=nstud-1) * sqrt(CI.weightedVariance))
+
+```
+
+Finally, we calculate the coverage over all simulations (5000) as:
+
+```{r eval=FALSE}
+# Coverage
+coverage.norm[i] <- ifelse(trueVal >= CI.lower.norm[i] & trueVal <= CI.upper.norm[i], 1, 0)
+coverage.t[i] <- ifelse(trueVal >= CI.lower.t[i] & trueVal <= CI.upper.t[i], 1, 0)
+coverage.weightVar[i] <- ifelse(trueVal >= CI.lower.weightVar[i] & trueVal <= CI.upper.weightVar[i], 1, 0)
+```
+
+```{r echo=FALSE, cache=TRUE}
+# Reset seed
+set.seed(1112)
+
+nsim <- 5000
+nsub <- 30
+nstud <- 20
+trueVal <- 0
+
+CI.upper.norm <- CI.upper.t <- CI.upper.weightVar <- array(NA,dim=nsim)
+CI.lower.norm <- CI.lower.t <- CI.lower.weightVar <- array(NA,dim=nsim)
+coverage.norm <- coverage.t <- coverage.weightVar <- array(NA,dim=nsim)
+
+for(i in 1:nsim){
+  dStud <- array(NA,dim=nstud)
+	varStud <- array(NA,dim=nstud)
+	for(s in 1:nstud){
+		N1 <- nsub/2
+		N2 <- nsub/2
+		# Subjects in first group
+		X1 <- trueVal + rnorm(n=N1,mean=0,sd=2)
+		S2_X1 <- var(X1)
+		# Second group
+		X2 <- trueVal + rnorm(n=N2,mean=0,sd=2)
+		S2_X2 <- var(X2)
+		# Sample variance
+		Swithin <- sqrt((((N1-1)*S2_X1)+((N2-1)*S2_X2))/(N1 + N2 - 2))
+		# Cohen d
+		d <- (mean(X1) - mean(X2))/Swithin
+		# Variance
+		Vd <- (N1+N2)/(N1*N2) + (d^2/(2*(N1+N2)))
+		# Save in vector
+		dStud[s] <- d
+		varStud[s] <- Vd
+	}
+
+	# Now meta-analysis
+	# Weights
+	W <- 1/varStud
+	# Weighted mean
+	wMean <- sum(W*dStud)/sum(W)
+	# Variance of summary effect
+	varSum <- 1/sum(W)
+	# Confidence intervals
+	CI.upper.norm[i] <- wMean + (1.96 * sqrt(varSum))
+	CI.lower.norm[i] <- wMean - (1.96 * sqrt(varSum))
+
+	CI.upper.t[i] <- wMean + (qt(0.975,df=nsub-1) * sqrt(varSum))
+	CI.lower.t[i] <- wMean - (qt(0.975,df=nsub-1) * sqrt(varSum))
+
+	CI.weightedVariance <- sum(W*(dStud - wMean)**2)/((nstud - 1) * sum(W))
+	CI.upper.weightVar[i] <- wMean + (qt(0.975,df=nsub-1) * sqrt(CI.weightedVariance))
+	CI.lower.weightVar[i] <- wMean - (qt(0.975,df=nsub-1) * sqrt(CI.weightedVariance))
+
+	# Coverages
+	coverage.norm[i] <- ifelse(trueVal >= CI.lower.norm[i] & trueVal <= CI.upper.norm[i], 1, 0)
+	coverage.t[i] <- ifelse(trueVal >= CI.lower.t[i] & trueVal <= CI.upper.t[i], 1, 0)
+	coverage.weightVar[i] <- ifelse(trueVal >= CI.lower.weightVar[i] & trueVal <= CI.upper.weightVar[i], 1, 0)
+
+		rm(wMean, W, varSum)
+}
+```
+
+The mean coverages are in this case:
+
+```{r}
+mean(coverage.norm); mean(coverage.t); mean(coverage.weightVar)
+```
+
+
+
+
+## Scenario 2: standardized mean-difference in one-sample test
+In the second scenario, the effect size in each study is calculated based on one sample of subjects in which the null hypothesis statest that the mean is equal to 0. \
+The effect size (Hedges' $g$) and its variance are calculated as:
+$$ \begin{align}
+J &= 1-\left(\frac{3}{4(N-1)-1}\right) \\
+g &= \frac{t}{\sqrt{N}} \times J \\
+V(g) &= \frac{1}{N} + (1 - \frac{\gamma[(N - 2 / 2)]}{\gamma[(N - 1)/2]^2} \times \frac{N - 3}{2} \times g^2
+\end{align}$$
+
+We now plan 50.000 simulations in which there are each time 80 subjects and 50 studies for the meta-analysis. \
+We proceed again by simulating the data for the individual subjects, calculate a $T$-value and convert them to an effect size with its variance. These latter two values are stored in a vector.
+
+```{r eval=FALSE}
+nsub <- 80
+# Subjects in group
+X1 <- trueVal + rnorm(n=nsub,mean=0,sd=2)
+S2_X1 <- var(X1)
+
+# Hedge g
+t <- (mean(X1))/sqrt(S2_X1/nsub)
+g <- hedgeG(t,nsub)
+Vg <- varHedge(g,nsub)
+```
+
+
+After 50 iterations (the number of studies), we perform a fixed effects meta-analysis and calculate the confidence intervals as in scenario 1 (same code, not shown here). \
+
+
+```{r echo=FALSE, cache=TRUE}
+# Reset seed
+set.seed(1112)
+
+nsim <- 50000
+nsub <- 80
+nstud <- 50
+trueVal <- 0
+
+# Number of conficence intervals
+CIs <- c('norm','t','weightVar')
+NumCI <- length(CIs)
+
+# The CI's and the vector containing the indicators, which we will take the average of
+ind.coverage.norm <- CI.upper.norm <- CI.lower.norm <- array(NA,dim=nsim)
+ind.coverage.t <- CI.upper.t <- CI.lower.t <- array(NA,dim=nsim)
+ind.coverage.weightVar <- CI.upper.weightVar <- CI.lower.weightVar <- array(NA,dim=nsim)
+
+# The weighted mean values
+wMean <- array(NA,dim=nsim)
+
+
+# FOR LOOP
+for(i in 1:nsim){
+	Stud <- array(NA,dim=nstud)
+	varStud <- array(NA,dim=nstud)
+	for(s in 1:nstud){
+		# Subjects in group
+		X1 <- trueVal + rnorm(n=nsub,mean=0,sd=2)
+		S2_X1 <- var(X1)
+
+		# Hedge g
+		t <- (mean(X1))/sqrt(S2_X1/nsub)
+		g <- hedgeG(t,nsub)
+		Vg <- varHedge(g,nsub)
+
+		# Save in vector
+		Stud[s] <- g
+		varStud[s] <- Vg
+
+	}
+
+	# Now meta-analysis
+	# Weights
+	W <- 1/varStud
+	# Weighted means
+	wMean[i] <- sum(W*Stud)/sum(W)
+
+	# Variance of summary effect
+	varSum <- 1/sum(W)
+
+	# Confidence intervals
+	CI.upper.norm[i] <- wMean[i] + (1.96 * sqrt(varSum))
+	CI.lower.norm[i] <- wMean[i] - (1.96 * sqrt(varSum))
+	CI.upper.t[i] <- wMean[i] + (qt(0.975,df=nsub-1)  * sqrt(varSum))
+	CI.lower.t[i] <- wMean[i] - (qt(0.975,df=nsub-1)  * sqrt(varSum))
+		# Weighted variance
+		CI.weightedVariance <- sum(W*(Stud - wMean[i])**2)/((nstud - 1) * sum(W))
+	CI.upper.weightVar[i] <- wMean[i] + (qt(0.975,df=nsub-1) * sqrt(CI.weightedVariance))
+	CI.lower.weightVar[i] <- wMean[i] - (qt(0.975,df=nsub-1) * sqrt(CI.weightedVariance))
+
+	# Coverage
+	ind.coverage.norm[i] <- ifelse(trueVal >= CI.lower.norm[i] & trueVal <= CI.upper.norm[i], 1, 0)
+	ind.coverage.t[i] <- ifelse(trueVal >= CI.lower.t[i] & trueVal <= CI.upper.t[i], 1, 0)
+	ind.coverage.weightVar[i] <- ifelse(trueVal >= CI.lower.weightVar[i] & trueVal <= CI.upper.weightVar[i], 1, 0)
+
+}
+
+# Take the averages of the coverage indicators
+mean.coverage.norm <- mean(ind.coverage.norm)
+mean.coverage.t <- mean(ind.coverage.t)
+mean.coverage.weightVar <- mean(ind.coverage.weightVar)
+
+	# Indicators
+	ind.coverages <- list('norm' = ind.coverage.norm, 't' = ind.coverage.t, 'weightVar' = ind.coverage.weightVar)
+
+```
+
+
+
+The mean values for the three types of confidence intervals are:
+```{r}
+mean.coverage.norm;mean.coverage.t;mean.coverage.weightVar
+```
+
+
+To see if the amount of simulations is sufficient, we can make a plot over the amount of simulations run.\
+We start by taking the first 600 simulations (burn-in) and calculate the mean coverage over the 3 types of CI. We then add 10 simulations and calculate the mean coverage over the 610 simulations. We continue untill all simulations are added. 
+This produces the next plot (code not shown): 
+
+
+```{r, echo=FALSE, cache=TRUE}
+##
+###############
+### Plotting the number of simulations needed
+###############
+##
+# Number of calculations
+BY <- 10
+Calcs <- seq(600,nsim,by=BY)
+  PreCalcs <- seq(501,(nsim-(BY-1)),by=BY)
+NumCalc <- length(Calcs)
+
+# MEANS's
+MEAN <- data.frame(
+    'Mean' = array(NA,dim=c(NumCI*NumCalc)),
+    'CI' = array(NA,dim=c(NumCI*NumCalc))
+    )
+
+# For loop
+for(j in 1:NumCI){
+ # Pre-LOOP
+  DataMEAN <- ind.coverages[[CIs[j]]]
+   dat.tmp <- DataMEAN[c(1:500)]
+   dat.mean <- dat.tmp
+    rm(dat.tmp)
+  for(i in 1:NumCalc){
+    Index <- ((j-1) * NumCalc) + i
+    dat.tmp <- DataMEAN[c(PreCalcs[i]:Calcs[i])]
+    dat.mean <- c(dat.mean,dat.tmp)
+
+    # Calculate MEAN
+    MEANsim.tmp <- mean(dat.mean,na.rm=TRUE)
+    MEAN[Index,'Mean'] <- MEANsim.tmp
+    MEAN[Index, 'CI'] <- j
+
+    # Remove objects
+    rm(MEANsim.tmp,dat.tmp)
+  }
+  rm(dat.mean)
+}
+# Data frame
+MEAN$Time <- rep(c(1:NumCalc),times=NumCI)
+  MEAN$CI <- factor(MEAN$CI, labels = CIs)
+```
+
+
+```{r, echo=FALSE, fig.align='center'}
+# Plot
+LabelTime <- seq(600,nsim,length.out=6)
+ggplot(MEAN, aes(x = Time, y = Mean, group = CI)) +
+  geom_line(aes(colour = CI)) +
+  scale_x_continuous(name='Number of simulations', labels = LabelTime) + 
+  scale_y_continuous(name='Average emperical coverage')
+```
+
+
+We conclude that we have enough simulations. Though, there seem to be a small bias. Possibly, it would help to increase the amount of subjects and studies even more. 
+
+
+
+
+## Scenario 3: transforming t-value in linear regression
+After looking at the basics, we now start with linear regression to move further to fMRI. We add this scenario, because we only look at 15 subjects and 15 studies. These are the parameters used in simulating fMRI data. In this fictional example, we try to predict IQ of subjects by measuring their weight. We use 10.000 simulations. Note however that we are using formulas that are designed to be used with a one-sample t-test!
+In each simulation, we first simulate 15 subjects into 15 studies as:
+
+
+```{r eval=FALSE}
+nsub <- 15
+# Weight of subjects
+X <- 60 + rnorm(n=nsub,mean=0,sd=5)
+# IQ
+Y <- 100 + rnorm(n=nsub,mean=0,sd=5)
+
+# Linear regression
+fit <- lm(Y~X)
+
+# T-value
+TVal <- summary(fit)$coefficients[2,3]
+
+# Hedge g
+g <- hedgeG(TVal,nsub)
+Vg <- varHedge(g,nsub)
+```
+
+We again save the values $g$ and $Vg$ into a vector and proceed as previously to calculate the empirical coverages of the CI's. 
+
+```{r echo=FALSE, cache=TRUE}
+##
+###############
+### Scenario 3, code
+###############
+##
+rm(mean.coverage.norm,mean.coverage.t,mean.coverage.weightVar)
+set.seed(1112)
+
+# Options
+nsim <- 10000
+nsub <- 15
+nstud <- 15
+trueVal <- 0
+
+
+# Number of conficence intervals
+CIs <- c('norm','t','weightVar')
+NumCI <- length(CIs)
+
+
+# The CI's and the vector containing the indicators, which we will take the average of
+ind.coverage.norm <- CI.upper.norm <- CI.lower.norm <- array(NA,dim=nsim)
+ind.coverage.t <- CI.upper.t <- CI.lower.t <- array(NA,dim=nsim)
+ind.coverage.weightVar <- CI.upper.weightVar <- CI.lower.weightVar <- array(NA,dim=nsim)
+
+# The weighted mean values
+wMean <- array(NA,dim=nsim)
+
+#---------------
+# Start for loop
+for(i in 1:nsim){
+	Stud <- array(NA,dim=nstud)
+	varStud <- array(NA,dim=nstud)
+	for(s in 1:nstud){
+		# Weight of subjects
+		X <- 60 + rnorm(n=nsub,mean=0,sd=5)
+		# IQ
+		Y <- 100 + rnorm(n=nsub,mean=0,sd=5)
+
+		# Linear regression
+		fit <- lm(Y~X)
+
+		# T-value
+		TVal <- summary(fit)$coefficients[2,3]
+
+		# Hedge g
+		g <- hedgeG(TVal,nsub)
+		Vg <- varHedge(g,nsub)
+
+		# Save in vector
+		Stud[s] <- g
+		varStud[s] <- Vg
+	}
+
+	# Now meta-analysis
+	# Weights
+	W <- 1/varStud
+	# Weighted means
+	wMean[i] <- sum(W*Stud)/sum(W)
+
+	# Variance of summary effect
+	varSum <- 1/sum(W)
+
+	# Confidence intervals
+	CI.upper.norm[i] <- wMean[i] + (1.96 * sqrt(varSum))
+	CI.lower.norm[i] <- wMean[i] - (1.96 * sqrt(varSum))
+	CI.upper.t[i] <- wMean[i] + (qt(0.975,df=nsub-1)  * sqrt(varSum))
+	CI.lower.t[i] <- wMean[i] - (qt(0.975,df=nsub-1)  * sqrt(varSum))
+		# Weighted variance
+		CI.weightedVariance <- sum(W*(Stud - wMean[i])**2)/((nstud - 1) * sum(W))
+	CI.upper.weightVar[i] <- wMean[i] + (qt(0.975,df=nsub-1) * sqrt(CI.weightedVariance))
+	CI.lower.weightVar[i] <- wMean[i] - (qt(0.975,df=nsub-1) * sqrt(CI.weightedVariance))
+
+	# Coverage
+	ind.coverage.norm[i] <- ifelse(trueVal >= CI.lower.norm[i] & trueVal <= CI.upper.norm[i], 1, 0)
+	ind.coverage.t[i] <- ifelse(trueVal >= CI.lower.t[i] & trueVal <= CI.upper.t[i], 1, 0)
+	ind.coverage.weightVar[i] <- ifelse(trueVal >= CI.lower.weightVar[i] & trueVal <= CI.upper.weightVar[i], 1, 0)
+
+}
+
+# Take the averages of the coverage indicators
+mean.coverage.norm <- mean(ind.coverage.norm)
+mean.coverage.t <- mean(ind.coverage.t)
+mean.coverage.weightVar <- mean(ind.coverage.weightVar)
+
+	# Indicators
+	ind.coverages <- list('norm' = ind.coverage.norm, 't' = ind.coverage.t, 'weightVar' = ind.coverage.weightVar)
+```
+
+The results are:
+```{r}
+mean.coverage.norm;mean.coverage.t;mean.coverage.weightVar
+```
+> The amount of bias is larger than previous scenario. Possibly, the amount of subjects and studies is too low.
+
+We can again see if the amount of simulations are sufficient: 
+
+```{r, echo=FALSE, cache=TRUE}
+# Number of calculations
+BY <- 10
+Calcs <- seq(600,nsim,by=BY)
+  PreCalcs <- seq(501,(nsim-(BY-1)),by=BY)
+NumCalc <- length(Calcs)
+
+# MEANS's
+MEAN <- data.frame(
+    'Mean' = array(NA,dim=c(NumCI*NumCalc)),
+    'CI' = array(NA,dim=c(NumCI*NumCalc))
+    )
+# For loop
+for(j in 1:NumCI){
+ # Pre-LOOP
+  DataMEAN <- ind.coverages[[CIs[j]]]
+   dat.tmp <- DataMEAN[c(1:500)]
+   dat.mean <- dat.tmp
+    rm(dat.tmp)
+  for(i in 1:NumCalc){
+    Index <- ((j-1) * NumCalc) + i
+    dat.tmp <- DataMEAN[c(PreCalcs[i]:Calcs[i])]
+    dat.mean <- c(dat.mean,dat.tmp)
+
+    # Calculate MEAN
+    MEANsim.tmp <- mean(dat.mean,na.rm=TRUE)
+    MEAN[Index,'Mean'] <- MEANsim.tmp
+    MEAN[Index, 'CI'] <- j
+
+    # Remove objects
+    rm(MEANsim.tmp,dat.tmp)
+  }
+  rm(dat.mean)
+}
+
+MEAN$Time <- rep(c(1:NumCalc),times=NumCI)
+  MEAN$CI <- factor(MEAN$CI, labels = CIs)
+```
+
+
+```{r, echo=FALSE, fig.align='center'}
+# Plot
+LabelTime <- seq(600,nsim,length.out=5)
+ggplot(MEAN, aes(x = Time, y = Mean, group = CI)) +
+  geom_line(aes(colour = CI)) +
+	scale_x_continuous(name='Number of simulations', labels = LabelTime) + 
+  scale_y_continuous(name='Average emperical coverage')
+```
+
+
+
+
+## Scenario 4: univariate fMRI time series (one voxel)
+We finally get to simulate fMRI time series. In this scenario, we only simulate one voxel. As a consequence, we cannot do fancy stuff such as spatial smoothing, or even adding spatial noise. Hence, the simulations are limited to a time series with white noise only. 
+
+* We consider a blocked design with two stimuli. 
+* Each stimuli lasts for 20 seconds. 
+* TR = 2 seconds.
+* 200 scans in total. 
+* Within a simulation:
+  + 15 subjects
+  + 15 studies
+* 3000 simulations
+
+Some (incomplete) code for simulating the fMRI time series is shown below:
+
+
+```{r eval=FALSE}
+# Design of the data (no effect)
+design.null <- simprepTemporal(regions = 1, onsets = onsets, durations = duration,
+                         hrf = "double-gamma", TR = TR, totaltime = total,
+                         effectsize = effect.null)
+# Define region
+regions <- simprepSpatial(regions = 1, coord = coordinates, radius = list(radius), form ="cube", fading = 0)
+# Actual simulated data
+sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+             type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+```
+The time series for a particular simulation in this one voxel is depicted here:
+
+```{r echo=FALSE, cache=TRUE}
+####************####
+#### Global options
+####************####
+SCEN <- 1
+nstud <- 15
+nsub <- 15
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+on2 <- seq(20,total,40)
+onsets <- list(on1,on2)
+duration <- list(20,20)
+effect.null <- list(0,0)                              ## No effect
+effect <- list(1,1)   		                            ## Effect of 1 for designmatrix
+DIM <- c(1,1,1)
+
+Noise <- list(
+  'S1' = c(1,0,0,0,0,0)
+  )
+# Subject parameters
+TrueLocation <- c(1,1,1)
+TrueWhiteNoise <- Noise[SCEN]
+TrueRadius <- 1
+COPE <- array(NA,dim=nsub)
+
+SWEIGHTS <- SHEDGE <- SCOPE <- SVARCOPE <- STMAP <- array(NA,dim=nstud)
+
+designC1 <- simprepTemporal(onsets = list(on1), durations = list(duration[[1]]),
+                         hrf = "double-gamma", TR = TR, totaltime = total,
+                         effectsize = list(effect[[1]]))
+
+designC2 <- simprepTemporal(onsets = list(on2), durations = list(duration[[2]]),
+                        hrf = "double-gamma", TR = TR, totaltime = total,
+                        effectsize = list(effect[[1]]))
+
+design.null <- simprepTemporal(regions = 1, onsets = onsets, durations = duration,
+                         hrf = "double-gamma", TR = TR, totaltime = total,
+                         effectsize = effect.null)
+
+# X-matrix in order to fit the model later on (combination of C1 and C2).
+x <- fmri.design(matrix(c(simTSfmri(designC1, nscan=nscan, TR=TR, noise="none"),
+        simTSfmri(designC2, nscan=nscan, TR=TR, noise="none")),ncol=2),0)
+
+t <- s <- 1
+### SIMULATE THE DATA
+coordinates <- list(TrueLocation)
+# Radius
+radius <- TrueRadius
+# Define region
+regions <- simprepSpatial(regions = 1, coord = coordinates, radius = list(radius), form ="cube", fading = 0)
+w <- c(1,0,0,0,0,0)
+base <- 5
+sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+       type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+```
+
+```{r echo=FALSE, fig.align='center'}
+plot(sim.data[1,1,1,],type='l',xlab='Time',ylab='BOLD')
+```
+
+In order to analyze the data, we use a simple GLM with the design matrix ($x$) consisting of 2 columns with the convoluted time series. This is depicted in the figure below (red is first column, blue is the second). 
+
+
+```{r echo=FALSE, fig.align='center'}
+plot(sim.data[1,1,1,], type='l',xlab='Time',ylab='BOLD')
+par(new=TRUE)
+plot(x[,1], type='l', col='red', xlab="", ylab='',axes=FALSE, lty=2)
+par(new=TRUE)
+plot(x[,2], type='l', col='blue', xlab='',ylab='',axes=FALSE, lty=3)
+par(new=FALSE)
+```
+
+The following code shows fitting the design matrix to the simulated data, extract the beta coefficients and calculate the contrast as $1 - 1$:
+
+```{r eval=FALSE}
+LM.sim.data <- array(sim.data,dim=nscan)
+fit <- lm(LM.sim.data~x[,-3])
+	b1 <- summary(fit)$coefficients[2]
+	b2 <- summary(fit)$coefficients[3]
+BETAS <- c(b1,b2)
+CONTRAST <- c(1,-1)
+  # Estimated contrast of parameter beta's
+COPE.sub <- CONTRAST %*% BETAS
+  COPE[s] <- COPE.sub
+```
+
+The COPE values are saved into a vector, after which we move on to the second stage GLM of the fMRI in which we use a simple OLS estimation procedure:
+
+```{r eval=FALSE}
+# Group COPE (average)
+GCOPE <- mean(COPE,na.rm=TRUE)
+# Now we will do the OLS estimation of the variance
+GVARCOPE <- var(COPE,na.rm=TRUE)
+# TMAP
+GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub))
+```
+
+
+We proceed with the meta-analysis as in previous scenario.
+
+
+```{r echo=FALSE, cache=TRUE}
+# Reset seed
+set.seed(11121990)
+
+# Directory for different takes
+DATAwd <- list(
+  'Take[1]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take1",
+	'Take[2]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take2"
+	)
+
+# Prefixes
+prefix <- list(
+	'Take[1]' = "WNSm",
+	'Take[2]' = "UNI_"
+)
+
+# Suffix
+suffix <- list(
+	'Take[1]' = "weightAvg_",
+	'Take[2]' = "weightVar_"
+)
+
+NUMDATAwd <- length(DATAwd)
+currentWD <- 2
+
+# Number of scenarios
+if(currentWD==1) NumScen <- 7
+if(currentWD==2) NumScen <- 1
+
+# Number of conficence intervals
+CIs <- c('norm','t','weightAvg')
+NumCI <- length(CIs)
+
+
+nsim <- 3000
+if(currentWD==1) DIM <- c(16,16,16)
+if(currentWD==2) DIM <- c(1,1,1)
+
+
+# Load in objects
+if(currentWD == 2){		
+	load(paste(wd,'/RObjects/2016-02-08-mean_coverages',sep=''))
+}
+	
+# Make a data frame with the average coverage over all simulations and voxels with SD as well and variable for scenario
+CI.coverages <- data.frame(
+    'Mean' = rep(NA,c(NumScen * NumCI)),
+    'SD' = rep(NA,c(NumScen * NumCI)),
+    'Scenario' = rep(NA,c(NumScen * NumCI)),
+    'CI' = rep(NA,c(NumScen * NumCI))
+)
+
+for(s in 1:NumScen){
+  for(i in 1:NumCI){
+    index <- (NumCI * (s-1)) + i
+    data.CI <- mean.coverages[[i]]
+    data.Scen <- data.CI[,,s]
+      if(currentWD==1) mean.Scen <- round(apply(data.Scen,1,mean,na.rm=TRUE),4)
+  		if(currentWD==2) mean.Scen <- round(mean(data.Scen,na.rm=TRUE),4)
+        mean.vox <- round(mean(mean.Scen,na.rm=TRUE),4)
+      sd <- round(sd(mean.Scen,na.rm=TRUE),4)
+    # Put the values in the data frame
+    CI.coverages[index,'Mean'] <- mean.vox
+    CI.coverages[index,'SD'] <- sd
+    CI.coverages[index,'Scenario'] <- s
+    CI.coverages[index,'CI'] <- i
+  }
+}
+
+  CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
+
+```
+
+
+The results are shown below:
+```{r echo=FALSE}
+CI.coverages[,-c(2:3)]
+```
+
+We can also look at the distribution of the weighted average values from this one voxel over all simulations. \
+This is plotted below:
+
+```{r echo=FALSE, cache=TRUE}
+mean.wAvg <- array(NA,dim=c(prod(DIM),nsim,NumScen))
+# Load in R objects
+for(s in 1:NumScen){
+  for(i in 1:nsim){
+    if(s==7 & i==54)next
+    load(paste(DATAwd[[currentWD]],'/',i,'/','SCEN_',s,'/',prefix[[currentWD]],'WeightedAvg_',i,sep=''))
+    mean.wAvg[,i,s] <- WeightedAvg
+    rm(WeightedAvg)
+  }
+}
+
+# Average over all simulations
+mean.wAvg.sim <- apply(mean.wAvg,c(1,3),mean,na.rm=TRUE)
+  mean.wAvg.sim.F <- data.frame('WeightedAvg' = matrix(mean.wAvg.sim,ncol=1),
+                                'Scenario' = rep(c(1:NumScen), each = prod(DIM)))
+  mean.wAvg.sim.F$Scenario <- factor(mean.wAvg.sim.F$Scenario)
+
+# One random voxel in a data frame
+VOX <- c(1,1,1)
+mean.wAvg.OneVox <- data.frame('WeightAvg' = matrix(mean.wAvg[VOX,,],ncol=1),
+                               'Scenario' = rep(c(1:NumScen), each = nsim))
+  mean.wAvg.OneVox$Scenario <- factor(mean.wAvg.OneVox$Scenario)
+```
+
+
+```{r echo=FALSE, fig.align='center'}
+# Distribution of weighted average from the one voxel over all simulations
+colours <- c('#00B6EB')
+ggplot(mean.wAvg.OneVox, aes(x=WeightAvg,group = Scenario)) + geom_density(aes(fill = Scenario),adjust=1,position='stack', colour='white') +
+scale_x_continuous(name="") +
+geom_vline(xintercept=0,colour='red') +
+scale_fill_manual(values= colours, name="Scenario", labels = labels) +
+ggtitle(label='Weighted averages over all simulations') + theme_bw() +
+  theme(plot.title = element_text(lineheight=.4,size=10, face="plain"),
+    legend.position="left")
+
+```
+
+
+## Scenario 5: multivariate fMRI time series (16 x 16 x 16)
+In this section, we look at a small grid of voxels. We consider a 16 x 16 x 16 image. The basic parameters are the same as in previous scenario. We only look at 15 subjects in 15 studies, over 3000 simulations.
+However, we now have the oportunity to introduce extra noise such as spatial noise between neighbouring voxels. As a consequence, we investigate the effect of an increasingly deviation from white noise only. We simulate 7 scenario's which are listed below. From scenario 3--7, we list the true weighting in the following order: *white, temporal, low-frequency, physyiological, task related and spatial*. This is the relative weighting given to the type of noise. 
+
+* Scenario 1: white noise only, no spatial smoothing in the analysis
+* Scenario 2: white noise only, with spatial smoothing in the analysis
+* Scenario 3: 0.84,0.05,0.02,0.02,0.02,0.05
+* Scenario 4: 0.64,0.15,0.02,0.02,0.02,0.15
+* Scenario 5: 0.45,0.25,0.02,0.02,0.02,0.25
+* Scenario 6: 0.24,0.35,0.02,0.02,0.02,0.35
+* Scenario 7: 0.04,0.45,0.02,0.02,0.02,0.45
+
+Note that we induce between-subject variability on this weighting structure when simulating data. 
+Furthermore, we add two locations which *could* contain a true signal. However, as we are simulating null data, this is not relevant (only included for later on when we add true activation).
+
+The analysis of the linear model is now performed using a function from the *fmri* package. This is done because it allows to estimate temporal correlation (the AR(1) coefficient), pre-whiten the data and directly extract the contrast from the *fmri.lm* function. In *R* code, this is:
+
+```{r eval=FALSE}
+# Fitting GLM model: estimated AR(1)-coefficients are used to whiten data, may produce warnings because data is pre-smoothed.
+model <- fmri.lm(datafmri,x, actype = "accalc", keep="all",contrast=c(1,-1))
+
+# Estimated contrast of parameter beta's from model
+COPE.sub <- model$cbeta
+  COPE[,,,s] <- COPE.sub
+VARCOPE.sub <- model$var
+```
+
+The rest of the procedure is similar to previous scenario (calculating group T-maps, converting the studies to an effect size and perform a fixed effects meta-analysis). We end up with 3000 times a grid of 16 x 16 x 16 voxels. In each voxel, we can look whether or not the true value of the weighted average (0) is in the CI. 
+
+> The emperical coverages of the CI's is calculated by averaging over all 3000 simulations AND all voxels.
+
+That is, for $i$ voxels containing an indicator value ($V = 1$, the CI contains the true value) and $s$ simulations:
+
+$$
+\text{coverage} = \frac{1}{4096}\sum_{i=1}^{4096}\left(\frac{1}{3000} \sum_{s=1}^{3000}V_{is} \right)
+$$
+
+
+```{r echo=FALSE, cache=TRUE}
+# Reset seed
+set.seed(11121990)
+
+# Directory for different takes
+DATAwd <- list(
+  'Take[1]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take1",
+	'Take[2]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take2"
+	)
+
+# Prefixes
+prefix <- list(
+	'Take[1]' = "WNSm",
+	'Take[2]' = "UNI_",
+  'Take[3]' = 'SK_'
+)
+
+# Suffix
+suffix <- list(
+	'Take[1]' = "weightAvg_",
+	'Take[2]' = "weightVar_"
+)
+
+
+NUMDATAwd <- length(DATAwd)
+currentWD <- 1
+
+# Number of scenarios
+if(currentWD==1) NumScen <- 7
+if(currentWD==2) NumScen <- 1
+
+# Number of conficence intervals
+CIs <- c('norm','t','weightAvg')
+NumCI <- length(CIs)
+
+##
+###############
+### Data Loading
+###############
+##
+
+##############################################
+# CI coverages over all voxels and simulations
+nsim <- 3000
+if(currentWD == 1){
+  DIM <- c(16,16,16)
+	load(paste(wd,'/RObjects/2016-02-09-mean_coverages',sep=''))
+}
+
+# Make a data frame with the average coverage over all simulations and voxels with SD as well and variable for scenario
+CI.coverages <- data.frame(
+    'Mean' = rep(NA,c(NumScen * NumCI)),
+    'SD' = rep(NA,c(NumScen * NumCI)),
+    'Scenario' = rep(NA,c(NumScen * NumCI)),
+    'CI' = rep(NA,c(NumScen * NumCI))
+)
+
+for(s in 1:NumScen){
+  for(i in 1:NumCI){
+    index <- (NumCI * (s-1)) + i
+    data.CI <- mean.coverages[[i]]
+    data.Scen <- data.CI[,,s]
+      if(currentWD==1) mean.Scen <- round(apply(data.Scen,1,mean,na.rm=TRUE),4)
+  		if(currentWD==2) mean.Scen <- round(mean(data.Scen,na.rm=TRUE),4)
+        mean.vox <- round(mean(mean.Scen,na.rm=TRUE),4)
+      sd <- round(sd(mean.Scen,na.rm=TRUE),4)
+    # Put the values in the data frame
+    CI.coverages[index,'Mean'] <- mean.vox
+    CI.coverages[index,'SD'] <- sd
+    CI.coverages[index,'Scenario'] <- s
+    CI.coverages[index,'CI'] <- i
+  }
+}
+  CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
+# Weighted averages
+mean.wAvg <- array(NA,dim=c(prod(DIM),nsim,NumScen))
+# Load in R objects
+for(s in 1:NumScen){
+  for(i in 1:nsim){
+    if(s==7 & i==54)next
+    load(paste(DATAwd[[currentWD]],'/',i,'/','SCEN_',s,'/',prefix[[currentWD]],'WeightedAvg_',i,sep=''))
+    mean.wAvg[,i,s] <- WeightedAvg
+    rm(WeightedAvg)
+  }
+}
+# Average over all simulations
+mean.wAvg.sim <- apply(mean.wAvg,c(1,3),mean,na.rm=TRUE)
+  mean.wAvg.sim.F <- data.frame('WeightedAvg' = matrix(mean.wAvg.sim,ncol=1),
+                                'Scenario' = rep(c(1:NumScen), each = prod(DIM)))
+  mean.wAvg.sim.F$Scenario <- factor(mean.wAvg.sim.F$Scenario)
+# One random voxel in a data frame
+  VOX <- prod(c(5,5,5))
+mean.wAvg.OneVox <- data.frame('WeightAvg' = matrix(mean.wAvg[VOX,,],ncol=1),
+                               'Scenario' = rep(c(1:NumScen), each = nsim))
+  mean.wAvg.OneVox$Scenario <- factor(mean.wAvg.OneVox$Scenario)
+```
+
+The following three figures show the emperical coverage, the distribution of weighted averages in one voxel over all simulations and the distribution of all voxels over all simulations.
+The SD bars in the first plot show the variability between all voxels of the grid over all simulations.
+
+
+```{r echo=FALSE, warning=FALSE, fig.align='center'}
+limits <- aes(ymax = Mean + SD, ymin= Mean - SD)
+labels <- c('White & Not smoothed',
+    'White & Smoothed',
+    '0.84,0.05,0.02,0.02,0.02,0.05',
+    '0.64,0.15,0.02,0.02,0.02,0.15',
+    '0.45,0.25,0.02,0.02,0.02,0.25',
+    '0.24,0.35,0.02,0.02,0.02,0.35',
+    '0.04,0.45,0.02,0.02,0.02,0.45')
+
+# First quadrant: coverages
+Q1 <- ggplot(CI.coverages, aes(x=factor(Scenario), y=Mean, colour=CI)) +
+  geom_point(aes(colour=CI),size=3) +
+  geom_line(aes(group=CI)) +
+  scale_x_discrete(name="", labels=labels) +
+  geom_errorbar(limits,width=0.15) +
+  scale_colour_manual(values = c('#2b8cbe', '#016c59','#8c510a'), name='CI', labels = c('Normal', 't', 'weighted variance')) +
+  ggtitle(label='Coverages of 3 types of CI over all voxels and simulations') +
+  theme(plot.title = element_text(lineheight=.4,size=10, face="plain"),
+    axis.text.x = element_text(angle = 315, hjust = 0, vjust = 0.95),
+    legend.position="left")
+
+
+
+# Second quadrant: distribution of weighted average from random voxel over all simulations
+colours <- sort(c('#00B6EB', '#00C094', '#53B400', '#A58AFF', '#C49A00', '#F8766D', '#FB61D7'))
+Q2 <- ggplot(mean.wAvg.OneVox, aes(x=WeightAvg,group = Scenario)) + geom_density(aes(fill = Scenario),adjust=1,position='stack', colour='white') +
+scale_x_continuous(name="") +
+geom_vline(xintercept=0,colour='red') +
+scale_fill_manual(values= colours, name="Scenario", labels = labels) +
+scale_colour_manual(values= 'white', name="Scenario", labels = labels) +
+ggtitle(label='Weighted averages over all simulations in ONE voxel') + theme_bw() +
+  theme(plot.title = element_text(lineheight=.4,size=10, face="plain"),
+    legend.position="left")
+
+
+
+# Third quadrant: distribtution of weighted average over all voxels and simulations
+Q3 <- ggplot(mean.wAvg.sim.F, aes(x=WeightedAvg,group = Scenario)) + geom_density(aes(fill = Scenario),adjust=1,position='stack', colour='white') +
+scale_x_continuous(name="") +
+geom_vline(xintercept=0,colour='red') +
+scale_fill_manual(values= colours, name="Scenario", labels = labels) +
+scale_colour_manual(values= 'white', name="Scenario", labels = labels) +
+ggtitle(label='Weighted averages over all simulations in ALL voxels') + theme_bw() +
+  theme(plot.title = element_text(lineheight=.4,size=10, face="plain"),
+    legend.position="none")
+
+Q1
+Q2
+Q3
+```
+
+Finally, we check whether we have enough simulations for each of the 7 scenario's:
+
+```{r echo=FALSE, warning=FALSE, fig.align='center'}
+
+
+# Load in object
+load(paste(wd,'/RObjects/2016-02-03-MEANvox',sep=''))
+    MEANvox$CI <- factor(MEANvox$CI, labels = CIs)
+
+# Plot
+LabelTime <- seq(600,nsim,length.out=6)
+ggplot(MEANvox, aes(x = Time, y = Mean, group = CI)) +
+  geom_line(aes(colour = CI)) +
+  facet_wrap( ~ Scenario)+
+	scale_x_continuous(name='Number of simulations', labels = LabelTime) +
+  scale_y_continuous(name='Average emperical coverage')
+```
+
+
+## Scenario 6: univariate fMRI time series for increasing sample and study size
+
+As seen in previous scenario, the coverages do not particularly start at nominal level. However, as suggested in scenario 2, this could be due to a limited sample size and amount of studies. To this extent, we simulate for the univariate case 1,500 simulations in which we vary the amount of subjects from 20 to 100 in steps of 10, while increasing the amount of studies from 2 to 10 in steps of 1. Note however that we only look at balanced designs (equal amount of subjects in all the studies) meaning we leave out some scenarios. An overview is given below:
+
+```{r echo=FALSE}
+# For the third scenario, we need our data frame with the sample size and studies
+# First make the data frame with the combinations of subjects and studies
+is.wholenumber <-
+    function(x, tol = .Machine$double.eps^0.5)  abs(x - round(x)) < tol
+ss <- rep(seq(10,100,by=10),9)
+k <- rep(seq(2,10),each=10)
+ID <- is.wholenumber(ss/k)
+OverView <- data.frame('Subjects' = ss, 'Studies' = k, 'Selection' = ID)
+	OverView.Sel <- OverView[ID,-3]
+```
+
+```{r echo=FALSE}
+OverView.Sel
+```
+
+The results of the emperical coverage for this one voxel is plotted in the graph below. However, for plotting purpose, I only show the results for 2, 5 and 10 studies (all going from 20 to 100 sample size).
+
+
+```{r echo=FALSE, cache=TRUE}
+# Directory for different takes
+DATAwd <- list(
+	'Take[1]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take1",
+	'Take[2]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take2",
+  'Take[3]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take3",
+	'Take[4]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take4/Results",
+	'Take[5]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take5"
+	)
+# Prefixes
+prefix <- list(
+	'Take[1]' = "WNSm",
+	'Take[2]' = "UNI_",
+  'Take[3]' = 'SK_',
+	'Take[4]' = "UNI_SK_",
+	'Take[5]' = 'SK_'
+)
+# Suffix
+suffix <- list(
+	'Take[1]' = "weightAvg_",
+	'Take[2]' = "weightVar_",
+  'Take[3]' = "weightVar_",
+	'Take[4]' = "weightVar_",
+	'Take[5]' = "weightVar_"
+)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 4
+
+# Number of scenarios
+if(currentWD == 1) NumScen <- 7
+if(currentWD==2) NumScen <- 1
+if(currentWD %in% c(3,4,5)) NumScen <- 45
+
+# Number of conficence intervals
+CIs <- c('norm','t','weightVar')
+NumCI <- length(CIs)
+##############################################
+# CI coverages over all voxels and simulations
+nsim <- 1500
+if(currentWD == 4){
+	load(paste(wd,'/RObjects/2016-02-15-mean_coverages',sep=''))
+}
+# Make a data frame with the average coverage over all simulations and voxels with SD as well and variable for scenario
+CI.coverages <- data.frame(
+    'Mean' = rep(NA,c(NumScen * NumCI)),
+    'SD' = rep(NA,c(NumScen * NumCI)),
+    'Scenario' = rep(NA,c(NumScen * NumCI)),
+    'CI' = rep(NA,c(NumScen * NumCI))
+	)
+	if(currentWD %in% c(3,4,5)){
+		CI.coverages$SampleSize <- rep(NA,c(NumScen * NumCI))
+		CI.coverages$Studies <- rep(NA,c(NumScen * NumCI))
+	}
+for(s in 1:NumScen){
+  for(i in 1:NumCI){
+    index <- (NumCI * (s-1)) + i
+    data.CI <- mean.coverages[[i]]
+    data.Scen <- data.CI[,,s]
+      if(currentWD %in% c(1,3,5)) mean.Scen <- round(apply(data.Scen,1,mean,na.rm=TRUE),4)
+			if(currentWD %in% c(2,4)) mean.Scen <- round(mean(data.Scen,na.rm=TRUE),4)
+        mean.vox <- round(mean(mean.Scen,na.rm=TRUE),4)
+      sd <- round(sd(mean.Scen,na.rm=TRUE),4)
+    # Put the values in the data frame
+    CI.coverages[index,'Mean'] <- mean.vox
+    CI.coverages[index,'SD'] <- sd
+    CI.coverages[index,'Scenario'] <- s
+    CI.coverages[index,'CI'] <- i
+		CI.coverages[index,'SampleSize'] <- OverView.Sel[s,'Subjects']
+		CI.coverages[index,'Studies'] <- OverView.Sel[s,'Studies']
+
+  }
+}
+CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
+	if(currentWD %in% c(3,4,5)){
+		CI.coverages$SampleSize <- factor(CI.coverages$SampleSize)
+		CI.coverages$Studies <- factor(CI.coverages$Studies)
+	}
+```
+
+
+
+```{r echo=FALSE, warning=FALSE, fig.align='center', fig.width=9}
+## PLotting
+###---------------###
+##### TAKE 4
+###---------------###
+
+# Let's start with a selection of CI.coverages (2, 5 or 10 studies)
+IDStud <- CI.coverages$Studies %in% c(2,5,10)
+CI.coverages.Sel <- CI.coverages[IDStud,]
+colours <- c('#1b9e77','#d95f02','#7570b3')
+ggplot(CI.coverages.Sel, aes(x=SampleSize, y=Mean, colour=Studies)) +
+  geom_point(aes(colour=Studies),size=1.3) +
+  geom_line(aes(group=Studies), size=1) +
+	geom_hline(yintercept=0.95,colour='red') +
+	facet_wrap( ~ CI) +
+  scale_x_discrete(name="Sample Size") +
+  scale_colour_manual(values = colours, name='Amount of studies', labels = c(2,5,10)) +
+  ggtitle(label='Coverages of 3 types of CI over all voxels and simulations') +
+  theme(plot.title = element_text(lineheight=.4,size=13, face="plain"),
+    axis.text.x = element_text(angle = 315, hjust = 0, vjust = 0.95),
+		legend.key = element_rect(fill='#d9d9d9', colour = '#d9d9d9'),
+		legend.background = element_rect(colour = '#d9d9d9', fill = '#d9d9d9'),
+		strip.background = element_rect(fill='#d9d9d9'),
+		legend.position="top")
+```
+
+
+In the next figure, I have caluclated a linear regression model with sample size and amount of studies predicting the emperical coverage. The parameter coefficients are then used to predict all the combinations of sample size and study. This is plotted in the next graph. Be cautious however as these are predictions, not the exact values. Furthermore, 3D graphs can be notoriously misleading!
+
+```{r echo=FALSE, warning=FALSE, fig.align='center', fig.width=15, fig.height=10}
+# 3D scatterplot
+	# Surface plot based on linear regression of the sample size and amount of studies on the mean coverage of each coverage
+# We create a X and Z value, which are 10 values
+x3 <- seq(1,10,1)
+y3 <- seq(2,10,1)
+	# We will use a function that creates for each interesection of x3 an y3 a value, based on the coefficients of the linear regression
+	FU <- function(x,y,coef) as.numeric(coef[1] + (x * coef[2]) + (y * coef[3]) + (x * y * coef[4]))
+# Here we have al the linear regressions
+SUR.lm.norm <- lm(Mean ~ as.numeric(SampleSize) * as.numeric(Studies), data=CI.coverages[CI.coverages$CI=='norm',])
+SUR.lm.t <- lm(Mean ~ as.numeric(SampleSize) * as.numeric(Studies), data=CI.coverages[CI.coverages$CI=='t',])
+SUR.lm.weightVar <- lm(Mean ~ as.numeric(SampleSize) * as.numeric(Studies), data=CI.coverages[CI.coverages$CI=='weightVar',])
+	# The coefficients from the three models
+	coef.lm.norm <- SUR.lm.norm$coef
+	coef.lm.t <- SUR.lm.t$coef
+	coef.lm.weightVar <- SUR.lm.weightVar$coef
+# Now we create the Z values according to the combinations of x3 and y3 (outer function)
+zval.norm <- outer(x3,y3,FU, coef=coef.lm.norm)
+zval.t <- outer(x3,y3,FU, coef=coef.lm.t); zval.t[zval.t > 1] <- 1
+zval.weightVar <- outer(x3,y3,FU, coef=coef.lm.weightVar)
+NOMINAL <- matrix(0.95,ncol=9,nrow=10)
+# Now go to plotting
+colours <- c('#1b9e77','#d95f02','#7570b3')
+persp(x3,y3,NOMINAL,theta=134,
+	phi=10,xlab='Sample Size (x10)',ylab='Studies',zlab='Emperical Coverage',
+	zlim=c(0.9,1), xlim=c(1,10),ylim=c(2,10), ticktype = 'detailed',main='', border='black',axes=TRUE,box=TRUE,d=2,lwd=2,nticks=10)
+	par(new = TRUE)
+persp(x3,y3,zval.weightVar,theta=134,
+	phi=10,xlab='',ylab='',zlab='',
+	zlim=c(0.9,1), xlim=c(1,10),ylim=c(2,10), ticktype = 'detailed',main='', border=colours[1],axes=FALSE,box=FALSE,d=2,lwd=2)
+	par(new = TRUE)
+persp(x3,y3,zval.norm,theta=134,
+     phi=10,xlab='',ylab='',zlab='',
+		 zlim=c(0.9,1), xlim=c(1,10),ylim=c(2,10), ticktype = 'detailed',main='', border=colours[2],axes=FALSE,box=FALSE,d=2,lwd=2)
+par(new = TRUE)
+persp(x3,y3,zval.t,theta=134,
+    phi=10,xlab='',ylab='',zlab='',
+		 zlim=c(0.9,1), xlim=c(1,10),ylim=c(2,10), ticktype = 'detailed',main='Average emperical coverage over ONE voxels and simulations.', border=colours[3],box=FALSE,d=2,lwd=2)
+legend(x=0.26,y=-0.1, legend=c(CIs[c(3,1,2)],'nominal'), bty='n', text.col = c(colours,'black'),cex=1.5)
+```
+
+With increasing the sample size and the amount of studies, we can see how the emperical coverage approaches the nominal level. We will now check this in the multivariate approach.
+
+## Scenario 7: multivariate fMRI time series for increasing sample and study size
+In this scenario, we repeat the simulation setting from scenario 5 with the details from scenario 6. That is, increasing the sample size from 20 to 100 in steps of 10 with the amount of studies from 2 to 10 whilst looking at the multivariate 16 x 16 x 16 grid of voxels in an fMRI setting. We only have 350 simulations at this time. 
+
+
+```{r echo=FALSE, cache=TRUE}
+currentWD <- 3
+if(currentWD == 3){
+	load(paste(wd,'/RObjects/2016-02-15-Take_3-mean_coverages',sep=''))
+}
+# Make a data frame with the average coverage over all simulations and voxels with SD as well and variable for scenario
+CI.coverages <- data.frame(
+    'Mean' = rep(NA,c(NumScen * NumCI)),
+    'SD' = rep(NA,c(NumScen * NumCI)),
+    'Scenario' = rep(NA,c(NumScen * NumCI)),
+    'CI' = rep(NA,c(NumScen * NumCI))
+	)
+	if(currentWD %in% c(3,4,5)){
+		CI.coverages$SampleSize <- rep(NA,c(NumScen * NumCI))
+		CI.coverages$Studies <- rep(NA,c(NumScen * NumCI))
+	}
+for(s in 1:NumScen){
+  for(i in 1:NumCI){
+    index <- (NumCI * (s-1)) + i
+    data.CI <- mean.coverages[[i]]
+    data.Scen <- data.CI[,,s]
+      if(currentWD %in% c(1,3,5)) mean.Scen <- round(apply(data.Scen,1,mean,na.rm=TRUE),4)
+			if(currentWD %in% c(2,4)) mean.Scen <- round(mean(data.Scen,na.rm=TRUE),4)
+        mean.vox <- round(mean(mean.Scen,na.rm=TRUE),4)
+      sd <- round(sd(mean.Scen,na.rm=TRUE),4)
+    # Put the values in the data frame
+    CI.coverages[index,'Mean'] <- mean.vox
+    CI.coverages[index,'SD'] <- sd
+    CI.coverages[index,'Scenario'] <- s
+    CI.coverages[index,'CI'] <- i
+		CI.coverages[index,'SampleSize'] <- OverView.Sel[s,'Subjects']
+		CI.coverages[index,'Studies'] <- OverView.Sel[s,'Studies']
+  }
+}
+CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
+	if(currentWD %in% c(3,4,5)){
+		CI.coverages$SampleSize <- factor(CI.coverages$SampleSize)
+		CI.coverages$Studies <- factor(CI.coverages$Studies)
+	}
+```
+
+The emperical coverages are plotted below:
+
+
+```{r echo=FALSE, warning=FALSE, fig.align='center', fig.width=9}
+#Plotting
+###---------------###
+##### TAKE 3
+###---------------###
+limits <- aes(ymax = Mean + SD, ymin= Mean - SD)
+colours <- c('#d53e4f','#f46d43','#fdae61','#fee08b','#ffffbf','#e6f598','#abdda4','#66c2a5','#3288bd')
+ggplot(CI.coverages, aes(x=SampleSize, y=Mean, colour=Studies)) +
+  geom_point(aes(colour=Studies),size=1.3) +
+  geom_line(aes(group=Studies), size=1) +
+	geom_hline(yintercept=0.95,colour='red') +
+	facet_wrap( ~ CI) +
+  scale_x_discrete(name="Sample Size") +
+  scale_colour_manual(values = colours, name='Amount of studies', labels = c(2:10)) +
+  ggtitle(label='Coverages of 3 types of CI over all voxels and simulations') +
+  theme(plot.title = element_text(lineheight=.4,size=13, face="plain"),
+    axis.text.x = element_text(angle = 315, hjust = 0, vjust = 0.95),
+		legend.key = element_rect(fill='#d9d9d9', colour = '#d9d9d9'),
+		legend.background = element_rect(colour = '#d9d9d9', fill = '#d9d9d9'),
+		strip.background = element_rect(fill='#d9d9d9'),
+		legend.position="top")
+```
+
+```{r echo=FALSE, warning=FALSE, fig.align='center', fig.width=15, fig.height=10}	
+# Surface plot based on linear regression of the sample size and amount of studies on the mean coverage of each coverage
+# We create a X and Z value, which are 10 values
+x3 <- seq(1,10,1)
+y3 <- x3
+	# We will use a function that creates for each interesection of x3 an y3 a value, based on the coefficients of the linear regression
+	FU <- function(x,y,coef) as.numeric(coef[1] + (x * coef[2]) + (y * coef[3]) + (x * y * coef[4]))
+# Here we have al the linear regressions
+SUR.lm.norm <- lm(Mean ~ as.numeric(SampleSize) * as.numeric(Studies), data=CI.coverages[CI.coverages$CI=='norm',])
+SUR.lm.t <- lm(Mean ~ as.numeric(SampleSize) * as.numeric(Studies), data=CI.coverages[CI.coverages$CI=='t',])
+SUR.lm.weightVar <- lm(Mean ~ as.numeric(SampleSize) * as.numeric(Studies), data=CI.coverages[CI.coverages$CI=='weightVar',])
+	# The coefficients from the three models
+	coef.lm.norm <- SUR.lm.norm$coef
+	coef.lm.t <- SUR.lm.t$coef
+	coef.lm.weightVar <- SUR.lm.weightVar$coef
+# Now we create the Z values according to the combinations of x3 and y3 (outer function)
+zval.norm <- outer(x3,y3,FU, coef=coef.lm.norm)
+zval.t <- outer(x3,y3,FU, coef=coef.lm.t); zval.t[zval.t > 1] <- 1
+zval.weightVar <- outer(x3,y3,FU, coef=coef.lm.weightVar)
+# Now go to plotting
+colours <- c('#1b9e77','#d95f02','#7570b3')
+persp(x3,y3,zval.weightVar,theta=125,
+	phi=10,xlab='Sample Size (x10)',ylab='Studies',zlab='Emperical Coverage',
+	zlim=c(0,1), xlim=c(1,10),ylim=c(1,10), ticktype = 'detailed',main='', border=colours[1],axes=TRUE,box=TRUE,d=2,lwd=2,nticks=10)
+	par(new = TRUE)
+persp(x3,y3,zval.norm,theta=125,
+     phi=10,xlab='',ylab='',zlab='',
+		 zlim=c(0,1), xlim=c(1,10),ylim=c(1,10), ticktype = 'detailed',main='', border=colours[2],axes=FALSE,box=FALSE,d=2,lwd=2)
+par(new = TRUE)
+persp(x3,y3,zval.t,theta=125,
+    phi=10,xlab='',ylab='',zlab='',
+		 zlim=c(0,1), xlim=c(1,10),ylim=c(1,10), ticktype = 'detailed',main='Average emperical coverage over all voxels and simulations.', border=colours[3],box=FALSE,d=2,lwd=2)
+legend(x='topright', legend=CIs[c(3,1,2)], bty='n', text.col = colours,cex=1.5)
+```
+
+
+There is definitely something going wrong. However, at this moment I have no idea what exactly causes these weird coverages.
+
+If we just look at one voxel, number 729 which is equal to position x=9, y=9, z=9. \
+Then we take the scenario in which we have 2 studies and N = 30 and compare this with 10 studies and N = 30 (this is scenario 3 and 38).  \
+We only look at the CI based on the normal distribution:
+
+```{r echo=FALSE}
+if(currentWD == 3){
+  load(paste(wd,'/RObjects/2016-02-15-Take_3-mean_coverages',sep=''))
+}
+```
+
+```{r}
+# Coverages are saved in next vector:
+coverage.norm <- mean.coverages$norm
+#coverage.norm
+str(coverage.norm)
+# Let us look at one voxel:
+K2_N30 <- 3
+K10_N30 <- 38
+coverage.norm[729,,K2_N30]
+coverage.norm[729,,K10_N30]
+# Average coverage
+mean(coverage.norm[729,,K2_N30],na.rm=TRUE)
+mean(coverage.norm[729,,K10_N30],na.rm=TRUE)
+```
+
+
+
+## Scenario 8: 2 x 2 x 2 multivariate fMRI time series with simple design
+
+To further pinpoint the weird observed coverages in previous scenario. We try to simplify some procedures. In this scenario, I only simulate a grid of 2 x 2 x2 voxels (8 in total). Furthermore, the fMRI analysis is now only one condition using a simple blocked design experiment (20 sec ON/OFF). I only consider 2, 5 or 10 studies while increasing the sample size from 10 to 100 in steps of 10. Results are based on 3000 simulations. \
+Hence the analysis of the time series within subjects simplify to:
+
+```{r eval=FALSE}
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+onsets <- list(on1)
+duration <- list(20)
+effect.null <- list(0)
+DIM <- c(2,2,2)
+
+# design matrix for generating data
+design.null <- simprepTemporal(regions = 1, onsets = onsets, durations = duration,
+                       hrf = "double-gamma", TR = TR, totaltime = total,
+                       effectsize = effect.null)
+
+# Actual simulated data
+sim.data <- simVOLfmri(design=design.null, image=regions, base=base, dim=DIM, SNR=0.5,
+             type ="gaussian", noise= "mixture", spat="gaussRF", FWHM=2, weights=w, verbose = TRUE)
+  # Transform it to correct dimension (Y = t x V)
+  Y.data <- t(matrix(sim.data,ncol=nscan))
+
+# Fitting GLM model.
+model.lm <- lm(Y.data ~ x)
+b1 <- coef(model.lm)['x',]
+COPE[,s] <- b1
+```
+In which *x* only contains one predictor. \
+The second level GLM is identical to previous scenarios:
+
+```{r eval=FALSE}
+# Group COPE (average)
+GCOPE <- apply(COPE,1,mean,na.rm=TRUE)
+# Now we will do the OLS estimation of the variance
+GVARCOPE <- apply(COPE,1,var,na.rm=TRUE)
+# TMAP
+GTMAP <- GCOPE/sqrt(GVARCOPE/(nsub))
+```
+We then continue by transforming the T-values to an ES, calculate a weighted average and construct CI's around it. 
+
+```{r echo=FALSE, cache=TRUE, warning=FALSE}
+# Directories of the data for different takes
+DATAwd <- list(
+	'Take[1]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take1",
+	'Take[2]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take2",
+  'Take[3]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take3",
+	'Take[4]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take4/Results",
+	'Take[5]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take5",
+  'Take[6]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take6",
+	'Take[7]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/IBMA",
+	'Take[8]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take8"
+	)
+# Prefixes
+prefix <- list(
+	'Take[1]' = "WNSm",
+	'Take[2]' = "UNI_",
+  'Take[3]' = 'SK_',
+	'Take[4]' = "UNI_SK_",
+	'Take[5]' = 'SK_',
+  'Take[6]' = 'SD_',
+	'Take[7]' = 'IBMA_',
+	'Take[8]' = 'SDG_'
+)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 6
+# Number of scenarios
+NumScen.tmp <- matrix(c(
+                1,7,
+                2,1,
+                3,45,
+                4,45,
+                5,45,
+                6,30,
+								7,30,
+								8,30
+              ), ncol=2, byrow=TRUE)
+NumScen <- NumScen.tmp[currentWD,2]
+# Number of conficence intervals
+CIs <- c('norm','t','weightVar')
+NumCI <- length(CIs)
+# Number of executed simulations
+nsim.tmp <- matrix(c(
+                1,4176,
+                2,3000,
+                3,350,
+                4,1500,
+                5,500,
+                6,3000,
+								7,3000,
+								8,3000
+              ), ncol=2, byrow=TRUE)
+nsim <- nsim.tmp[currentWD,2]
+# Dimension of brain
+DIM.tmp <- array(NA, dim=c(NUMDATAwd,3))
+	DIM.tmp[c(1,3,5,8),] <- c(16,16,16)
+	DIM.tmp[c(2,4),] <- c(1,1,1)
+	DIM.tmp[c(6,7),] <- c(2,2,2)
+DIM <- DIM.tmp[currentWD,]
+# Number of subjects and studies
+TablesOverview <- list(
+	'[1]' = '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take3/OverView.Sel.txt',
+	'[2]' = '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take6/OverView.txt'
+	)
+overview.tmp <- matrix(c(			# This takes the element from TablesOverview
+                1,NA,
+                2,NA,
+                3,1,
+                4,1,
+                5,1,
+                6,2,
+								7,2,
+								8,2
+              ), ncol=2, byrow=TRUE)
+OverView.Sel <- read.table(file=TablesOverview[[overview.tmp[currentWD,2]]], header=TRUE)
+# Function for data wrangling: indicator for CI and true value
+indicating <- function(UPPER, LOWER, trueVal){
+	IND <- trueVal >= LOWER & trueVal <= UPPER
+	COVERAGE <- apply(IND, 1, mean, na.rm=TRUE)
+	return(COVERAGE)
+}
+
+# Data has been pre-processed in the PreProcess.R file. All simulations are there being read in and combined.
+	# Structue: each scenario = a list
+		# Each list: rows = voxels, columns = simulations
+# Load in these objects
+OBJECTS <- c('CI.upper.norm.All','CI.lower.norm.All','CI.upper.t.All',
+	'CI.lower.t.All','CI.upper.weightVar.All','CI.lower.weightVar.All',
+	'WeightedAvg.All')
+	NumObjects <- length(OBJECTS)
+for(i in 1:NumObjects){
+	load(paste(DATAwd[[currentWD]], '/Take',currentWD,'-',OBJECTS[i],sep=''))
+}
+# True value
+trueVal <- 0
+# CI coverages over all voxels and simulations
+mean.coverage.norm <-
+mean.coverage.t <-
+mean.coverage.weightVar <-
+		array(NA,dim=c(prod(DIM),NumScen))
+# For loop over all scenarios
+for(s in 1:NumScen){
+	mean.coverage.norm[,s] <- indicating(UPPER = CI.upper.norm.All[[s]], LOWER = CI.lower.norm.All[[s]], trueVal = trueVal)
+	mean.coverage.t[,s] <- indicating(UPPER = CI.upper.t.All[[s]], LOWER = CI.lower.t.All[[s]], trueVal = trueVal)
+	mean.coverage.weightVar[,s] <- indicating(UPPER = CI.upper.weightVar.All[[s]], LOWER = CI.lower.weightVar.All[[s]], trueVal = trueVal)
+}
+# Put the 3 CI coverages in a list
+mean.coverages <- list('norm' = mean.coverage.norm,'t' = mean.coverage.t, 'weightVar' = mean.coverage.weightVar)
+CI.coverages <- data.frame(
+	'Mean' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,mean)}),ncol=1),
+	'SD' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,sd)}),ncol=1),
+	'Scenario' = rep(seq(1,NumScen),NumCI),
+	'CI' = rep(CIs, each = NumScen),
+	'SampleSize' = rep(OverView.Sel[,'Subjects'],NumCI),
+	'Studies' = rep(OverView.Sel[,'Studies'],NumCI)
+	)
+CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
+	if(!currentWD %in% c(1,2)){
+		CI.coverages$SampleSize <- factor(CI.coverages$SampleSize)
+		CI.coverages$Studies <- factor(CI.coverages$Studies)
+	}
+```
+
+The results of the emperical coverages are shown below:
+```{r echo=FALSE, warning=FALSE, fig.align='center', fig.width=9}
+colours <- c('#1b9e77','#d95f02','#7570b3')
+ggplot(CI.coverages, aes(x=SampleSize, y=Mean, colour=Studies)) +
+  geom_point(aes(colour=Studies),size=1.3) +
+  geom_line(aes(group=Studies), size=1) +
+	geom_hline(yintercept=0.95,colour='red') +
+	facet_wrap( ~ CI) +
+  scale_x_discrete(name="Sample Size") +
+  scale_colour_manual(values = colours, name='Amount of studies', labels = c(2,5,10)) +
+  ggtitle(label='Coverages of 3 types of CI over all voxels and simulations') +
+  theme(plot.title = element_text(lineheight=.4,size=13, face="plain"),
+    axis.text.x = element_text(angle = 315, hjust = 0, vjust = 0.95),
+		legend.key = element_rect(fill='#d9d9d9', colour = '#d9d9d9'),
+		legend.background = element_rect(colour = '#d9d9d9', fill = '#d9d9d9'),
+		strip.background = element_rect(fill='#d9d9d9'),
+		legend.position = 'top')
+```
+
+
+## Scenario 9: 16 x 16 x 16 multivariate fMRI time series with simple design
+We repeat the same simulation, with the larger grid of 16 x 16 x 16 voxels (4096 in total) which is the grid being used in the previous scenarios. The other parameters are the same as in previous scenario. In fact, the only difference is:
+
+```{r eval=FALSE}
+DIM <- c(16,16,16)
+```
+
+The results are plotted below:
+
+
+```{r echo=FALSE, cache=TRUE}
+# Directories of the data for different takes
+DATAwd <- list(
+  'Take[8]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take8"
+	)
+# Prefixes
+prefix <- list(
+  'Take[8]' = 'SDG_'
+)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 1
+# Number of scenarios
+NumScen.tmp <- matrix(c(
+                8,30
+              ), ncol=2, byrow=TRUE)
+NumScen <- NumScen.tmp[currentWD,2]
+# Number of conficence intervals
+CIs <- c('norm','t','weightVar')
+NumCI <- length(CIs)
+# Number of executed simulations
+nsim.tmp <- matrix(c(
+                8,3000
+              ), ncol=2, byrow=TRUE)
+nsim <- nsim.tmp[currentWD,2]
+# Dimension of brain
+DIM.tmp <- array(NA, dim=c(NUMDATAwd,3))
+	DIM.tmp[c(1),] <- c(16,16,16)
+DIM <- DIM.tmp[currentWD,]
+# Number of subjects and studies
+TablesOverview <- list(
+	'[1]' = '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Take6/OverView.txt'
+	)
+overview.tmp <- matrix(c(			# This takes the element from TablesOverview
+                8,1
+              ), ncol=2, byrow=TRUE)
+OverView.Sel <- read.table(file=TablesOverview[[overview.tmp[currentWD,2]]], header=TRUE)
+# Function for data wrangling: indicator for CI and true value
+indicating <- function(UPPER, LOWER, trueVal){
+	IND <- trueVal >= LOWER & trueVal <= UPPER
+	COVERAGE <- apply(IND, 1, mean, na.rm=TRUE)
+	return(COVERAGE)
+}
+
+##
+###############
+### Data Wrangling
+###############
+##
+
+# Data is being preprocessed in PreProcessSimpDesGrid.R!
+  # Let's load the data in.
+load(file=paste(DATAwd[[currentWD]],'/Take8-mean.coverage.norm', sep=''))
+load(file = paste(DATAwd[[currentWD]],'/Take8-mean.coverage.t', sep=''))
+load(file = paste(DATAwd[[currentWD]],'/Take8-mean.coverage.weightVar', sep=''))
+# Put the 3 CI coverages in a list, then a data frame
+mean.coverages <- list('norm' = mean.coverage.norm,'t' = mean.coverage.t, 'weightVar' = mean.coverage.weightVar)
+CI.coverages <- data.frame(
+	'Mean' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,mean)}),ncol=1),
+	'SD' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,sd)}),ncol=1),
+	'Scenario' = rep(seq(1,NumScen),NumCI),
+	'CI' = rep(CIs, each = NumScen),
+	'SampleSize' = rep(OverView.Sel[,'Subjects'],NumCI),
+	'Studies' = rep(OverView.Sel[,'Studies'],NumCI)
+	)
+# Convert to factors
+CI.coverages$CI <- factor(CI.coverages$CI, labels=CIs)
+CI.coverages$SampleSize <- factor(CI.coverages$SampleSize)
+CI.coverages$Studies <- factor(CI.coverages$Studies)
+```
+
+
+```{r echo=FALSE, fig.align='center', fig.width=9}
+# Plotting the coverages
+colours <- c('#1b9e77','#d95f02','#7570b3')
+ggplot(CI.coverages, aes(x=SampleSize, y=Mean, colour=Studies)) +
+  geom_point(aes(colour=Studies),size=1.3) +
+  geom_line(aes(group=Studies), size=1) +
+	geom_hline(yintercept=0.95,colour='red') +
+	facet_wrap( ~ CI) +
+  scale_x_discrete(name="Sample Size") +
+  scale_colour_manual(values = colours, name='Amount of studies', labels = c(2,5,10)) +
+  ggtitle(label='Coverages of 3 types of CI over all voxels and simulations') +
+  theme(plot.title = element_text(lineheight=.4,size=13, face="plain"),
+    axis.text.x = element_text(angle = 315, hjust = 0, vjust = 0.95),
+		legend.key = element_rect(fill='#d9d9d9', colour = '#d9d9d9'),
+		legend.background = element_rect(colour = '#d9d9d9', fill = '#d9d9d9'),
+		strip.background = element_rect(fill='#d9d9d9'),
+		legend.position = 'top')
+```
+
+By having more voxels, which equals to having more values (as there is no correlation between voxels), we observe a similar pattern. This pattern could be more robust though.\
+Note the unexpected result of having lower studies in the weighted variance situation leading to emperical coverages closer to nominal level.
+
+

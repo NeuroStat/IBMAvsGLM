@@ -6,6 +6,10 @@ OldCode.R
 .Rapp (Exemplaar met conflict van MacBook Air van Han 2016-01-25).history
 .Rhistory
 
+# R objects (they do not really belong on Github)
+RObjects
+
+
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -21,20 +25,12 @@ workflow.sublime-workspace
 /*_files/
 /files/
 
-# Large files within Reports folder
-Reports/01_18_16
-Reports/01_25_16
-Reports/02_01_16
-Reports/02_15_16
-Reports/02_22_16/IBMA_coverages/IBMA_coverages_files
-Reports/02_22_16/IBMA_coverages/IBMA_coverages_cache
-Reports/02_22_16/Checks/CheckS_cache
-Reports/02_22_16/Report_Coverages_cache
-Reports/02_22_16/Report_Coverages_files
-Reports/03_01_16/IBMA_coverages/IBMA_coverages_cache
-Reports/03_01_16/IBMA_coverages/IBMA_coverages_files
-Reports/03_01_16/IBMAvsMA/IBMAvsMA_cache
-Reports/03_01_16/IBMAvsMA/IBMAvsMA_files
-Reports/03_01_16/Report_Coverages_cache
-Reports/03_01_16/Report_Coverages_files
-Reports/next
+# Older reports
+3_Reports/01_18_16
+3_Reports/01_25_16
+3_Reports/02_01_16
+3_Reports/02_15_16
+3_Reports/02_22_16
+3_Reports/03_01_16
+3_Reports/next
+
