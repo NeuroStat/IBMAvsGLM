@@ -6,8 +6,8 @@ source general_analysis_settings.sh
 
 MaximumThreads=8 # Maximum number of CPU threads to use
 
-#Study=Cambridge
-Study=Beijing
+Study=Cambridge
+#Study=Beijing
 
 # Design
 DesignNew=boxcar10
@@ -57,7 +57,7 @@ for Smoothing in 1 2 3 4 ; do
 	        data_directory=/home/andek/Data/fcon1000/${Study}/${SubjectNew}/func
 
 	        #---------------
-	        # Copy template design 
+	        # Copy template design
 	        cp ${design_directory}/Design_templates/GLM${Study}.fsf ${data_directory}/
 
 	        # Change smoothing output
@@ -83,7 +83,7 @@ for Smoothing in 1 2 3 4 ; do
 	        # Run analyses in parallel
 	        feat ${data_directory}/GLM${Study}.fsf &
 		    ((threads++))
-	
+
 			if [ $threads -eq "$MaximumThreads" ]; then
 			    wait
 	            threads=0
