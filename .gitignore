@@ -9,7 +9,6 @@ OldCode.R
 # R objects (they do not really belong on Github)
 RObjects
 
-
 # OS generated files
 .DS_Store
 .DS_Store?
@@ -32,5 +31,8 @@ workflow.sublime-workspace
 3_Reports/02_15_16
 3_Reports/02_22_16
 3_Reports/03_01_16
+3_Reports/**/*_files/
+3_Reports/**/*_cache/
+3_Reports/03_16_16/InvestigationIBMAvsGLM/custom.css
 3_Reports/next
 
