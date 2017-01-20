@@ -19,10 +19,11 @@ As is standard in fMRI, statistical modeling in a single study consists of apply
 The idea is to use fMRI null data to calculate the properties mentioned above. Indeed using:
 
 * Simulations in R
-* Resting state fMRI data from the 1000 functional connectome project (as in [Eklund et al.2016][Eklund])
-* Possibly an approach provided by [Slotnick (2017)][Slotnick] in which task based fMRI data is taken. But odd trials are contrasted with even trials from the same task. This creates a null data situation as well.
+* Resting state fMRI data from the 1000 functional connectome project (as in Eklund et al., 2016)
+* Possibly an approach provided by Slotnick (2017) in which task based fMRI data is taken. But odd trials are contrasted with even trials from the same task. This creates a null data situation as well.
 
 The reason for this extended approach is to provide as much validation as possible. Each method has its advantages and disadvantages.
+
 
 # Structure of repository
 * [1_Scripts](https://github.com/NeuroStat/SimulationGit/tree/master/1_Scripts) contains the scripts.
@@ -47,8 +48,10 @@ This project is hosted on the [Open Science Framework][1].
 [Beatrijs Moerkerke]: http://telefoonboek.ugent.be/nl/people/801001453542
 
 # References
-[Eklund]: Eklund A, Nichols TE, Knutsson H, Cluster failure: Why fMRI inferences for spatial extent have inflated false-positive rates., (2016), "Proc Natl Acad Sci USA. doi: 10.1073/pnas.1602413113
-[Slotnick]: Slotnick S.D., Resting-state fMRI data reflects default network activity rather than null data: A defense of commonly employed methods to correct for multiple comparisons., 2017, Cogn Neurosci, doi: 10.1080/17588928.2016.1273892.
+[Eklund]: Eklund A, Nichols TE, Knutsson H, Cluster failure: Why fMRI inferences for spatial extent have inflated false-positive rates., (2016), "Proc Natl Acad Sci USA. doi: [10.1073/pnas.1602413113](http://www.pnas.org/content/113/28/7900.abstract?sid=1f6fd91a-988c-4a69-80e4-a19ae1951614)
+
+
+[Slotnick]: Slotnick S.D., Resting-state fMRI data reflects default network activity rather than null data: A defense of commonly employed methods to correct for multiple comparisons., 2017, Cogn Neurosci, doi: [10.1080/17588928.2016.1273892](http://www.tandfonline.com/doi/full/10.1080/17588928.2016.1273892?scroll=top&needAccess=true).
 
 
 
