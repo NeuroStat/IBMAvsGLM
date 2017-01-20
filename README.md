@@ -48,10 +48,10 @@ This project is hosted on the [Open Science Framework][1].
 [Beatrijs Moerkerke]: http://telefoonboek.ugent.be/nl/people/801001453542
 
 # References
-[Eklund]: Eklund A, Nichols TE, Knutsson H, Cluster failure: Why fMRI inferences for spatial extent have inflated false-positive rates., (2016), "Proc Natl Acad Sci USA. doi: [10.1073/pnas.1602413113](http://www.pnas.org/content/113/28/7900.abstract?sid=1f6fd91a-988c-4a69-80e4-a19ae1951614)
+Eklund A, Nichols TE, Knutsson H, Cluster failure: Why fMRI inferences for spatial extent have inflated false-positive rates., (2016), "Proc Natl Acad Sci USA. doi: [10.1073/pnas.1602413113](http://www.pnas.org/content/113/28/7900.abstract?sid=1f6fd91a-988c-4a69-80e4-a19ae1951614)
 
 
-[Slotnick]: Slotnick S.D., Resting-state fMRI data reflects default network activity rather than null data: A defense of commonly employed methods to correct for multiple comparisons., 2017, Cogn Neurosci, doi: [10.1080/17588928.2016.1273892](http://www.tandfonline.com/doi/full/10.1080/17588928.2016.1273892?scroll=top&needAccess=true).
+Slotnick S.D., Resting-state fMRI data reflects default network activity rather than null data: A defense of commonly employed methods to correct for multiple comparisons., 2017, Cogn Neurosci, doi: [10.1080/17588928.2016.1273892](http://www.tandfonline.com/doi/full/10.1080/17588928.2016.1273892?scroll=top&needAccess=true).
 
 
 
