@@ -32,12 +32,11 @@ At the moment, we run analyses with these settings:
 * One scanning site (Cambridge)
 * Block design task:
   * 10 seconds ON/OFF
+  * 30 seconds ON/OFF
 * Smoothing at (mm):
   * 4
-  * 6
   * 8
-  * 10
-* Highpass filter cut-off at 20 seconds (twice length of blocked condition)
+* Highpass filter cut-off at 20/60 seconds (twice length of blocked condition)
 * Square waveform for EV
 * Gamma convolution
 * Cluster RFT inference at level 0.05 with Z-threshold (cluster forming) at 2.3
