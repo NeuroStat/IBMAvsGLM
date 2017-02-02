@@ -17,6 +17,7 @@ RObjects
 ehthumbs.db
 Thumbs.db
 workflow.sublime-workspace
+.sync-config.cson
 
 # Larger files associated with RMarkdown and knitr cache
 /*_cache/
