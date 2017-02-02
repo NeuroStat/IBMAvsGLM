@@ -3,7 +3,7 @@
 Initial scripts and attempt of using resting state as null data comes from https://github.com/wanderine/ParametricMultisubjectfMRI.
 
 # Data
-For each subject, we have a 3D structural scan (with and without skull) and one 4D functional (resting state) image from the 1000 functional connectomes project.
+For each subject, we have a 3D structural scan (with and without skull) and one 4D functional (resting state) image from the 1000 functional connectomes project. At the moment, we use the Cambridge scanning site only.
 
 Scanning/pre-processing parameters:
 * TR(s) = 3
@@ -39,8 +39,36 @@ At the moment, we run analyses with these settings:
 * Highpass filter cut-off at 20/60 seconds (twice length of blocked condition)
 * Square waveform for EV
 * Gamma convolution
-* Cluster RFT inference at level 0.05 with Z-threshold (cluster forming) at 2.3
+* Cluster RFT inference at level 0.05 with Z-threshold (cluster forming) at 2.3 (actually unnecessary).
 
 ### Second level GLM settings
+We draw at random 20 subjects from the processed first level into one study.
 
-> Not run at the moment.
+Settings for second level:
+* Mixed effects pooling: FLAME 1
+* Cluster RFT inference at level 0.05 with Z-threshold at 2.3. This is not really necessary for the research question, as we will use the estimates of the parameters of interest (COPES) and its variance (VARCOPES) to pool in a third level.
+
+### Third level GLM settings
+The second level is repeated for 5 times.
+Hence we have 20 subjects (N = 20) per study (K = 5). This is iterated for 3000 times (same amount as simulations).
+
+We will already sample subject IDs for second and third level, so that we can run iterate the analyses in parallel on the HPC.
+Hence we have 3000 jobs in which second and third level are taken together.
+
+Settings for the third level:
+* Mixed effects pooling: FLAME 1
+
+> Further details follow.
+
+
+
+
+
+
+
+
+
+
+
+
+
