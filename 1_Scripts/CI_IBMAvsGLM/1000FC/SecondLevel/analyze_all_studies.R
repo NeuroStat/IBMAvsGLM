@@ -58,6 +58,8 @@ input <- commandArgs(TRUE)
   SMOOTHING <- try(as.character(input)[6],silent=TRUE)
   # Design parameter
   DESIGN <- try(as.character(input)[7],silent=TRUE)
+  # Location of subject IDs in this simulation
+  LocSubjID <- try(as.character(input)[8],silent=TRUE)
     # If no machine is specified, then it has to be this machine in which we are testing code!
     if(is.na(MACHINE)){
       MACHINE <- 'MAC'
@@ -67,6 +69,8 @@ input <- commandArgs(TRUE)
       SITE <- 'Cambridge'
       SMOOTHING <- '8mm'
       DESIGN <- 'boxcar10'
+      # Location of IDs of subjects which we sample
+      LocSubjIDBOOLEAN <- TRUE
     }
 
 # Libraries
@@ -80,6 +84,7 @@ if(MACHINE=='HPC'){
 if(MACHINE=='MAC'){
   wd <- '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/1000FC/SecondLevel'
   data_base_dir <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results'
+  if(isTRUE(LocSubjIDBOOLEAN)) LocSubjID <- paste(data_base_dir, '/', SITE, '/SecondLevel/IDs/', simulID, sep = '')
 }
 setwd(wd)
 
@@ -97,14 +102,6 @@ if(MACHINE=='HPC'){
 }
 if(MACHINE=='MAC'){
   Base_Design <- readLines(con = paste(wd, '/Design_templates/GLMSecondLevel.fsf', sep = ''))
-}
-
-# Location of subject IDs
-if(MACHINE=='HPC'){
-  LocSubjID <- paste(data_base_dir, '/', SITE, '/SecondLevel/IDs/', simulID, sep = '')
-}
-if(MACHINE=='MAC'){
-  LocSubjID <- paste(data_base_dir, '/', SITE, '/SecondLevel/IDs/', simulID, sep = '')
 }
 
 
@@ -136,8 +133,9 @@ npts <- NSUB
 multiple <- NSUB
 
 # Directory of input data
+  # In HPC version: this is located in the ouptut directory as we copy the subjects over there to resolve interference.
 if(MACHINE=='HPC'){
-  Base_Input <- paste(data_base_dir, '/',SITE,'/',SMOOTHING,'/',DESIGN,'/', sep = '')
+  Base_Input <- paste(data_base_dir, '/',SITE,'/SecondLevel/',SMOOTHING,'/',DESIGN,'/',simulID,'/NSTUD_', sep = '')
 }
 if(MACHINE=='MAC'){
   Base_Input <- paste(data_base_dir, '/',SITE,'/',SMOOTHING,'/',DESIGN,'/', sep = '')
@@ -184,7 +182,8 @@ for(k in 1:NSTUD){
       for(s in 1:NSUB){
         InputLines <- rbind(InputLines, rbind(
           paste('# 4D AVW data or FEAT directory (',s,') ', sep = ''),
-          paste('set feat_files(',s,') "', Base_Input, SubjStudID[s],'/results.feat"', sep = ''),
+          if(MACHINE=='HPC') paste('set feat_files(',s,') "', Base_Input, k, '_data/', SubjStudID[s], '/results.feat"', sep = ''),
+          if(MACHINE=='MAC') paste('set feat_files(',s,') "', Base_Input, SubjStudID[s],'/results.feat"', sep = ''),
           c(""))
         )
       }
