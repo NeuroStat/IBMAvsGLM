@@ -50,7 +50,7 @@ Settings for second level:
 
 ### Third level GLM settings
 The second level is repeated for 5 times.
-Hence we have 20 subjects (N = 20) per study (K = 5). This is iterated for 3000 times (same amount as simulations).
+Hence we have 20 subjects (N = 20) per study (K = 5). Note that we make sure no subject is sampled twice into a study! This is iterated for 3000 times (same amount as simulations).
 
 We will already sample subject IDs for second and third level, so that we can run iterate the analyses in parallel on the HPC.
 Hence we have 3000 jobs in which second and third level are taken together.

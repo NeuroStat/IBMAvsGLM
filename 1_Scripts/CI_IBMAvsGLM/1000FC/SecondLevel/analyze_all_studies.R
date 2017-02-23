@@ -1,5 +1,5 @@
 ####################
-#### TITLE:     IBMA versus GLM: resting state fMRI (1000FC) second and third level.
+#### TITLE:     IBMA versus GLM: resting state fMRI (1000FC) second level.
 #### Contents:
 ####
 #### Source Files: ~\\Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/1000FC/SecondLevel
@@ -21,13 +21,6 @@
 
 # Here we take a design template for a second level group analysis from FSL (obtained by trying out a second level analyis manually).
 # Then we modify parameters in this design file, combine subjects into studies and run this .fsf analysis.
-# We then turn to third level.
-
-# MEASURES:
-#   * CI coverage
-#   * Standardized bias
-#   * Average CI length
-
 
 
 ##
@@ -60,6 +53,8 @@ input <- commandArgs(TRUE)
   DESIGN <- try(as.character(input)[7],silent=TRUE)
   # Location of subject IDs in this simulation
   LocSubjID <- try(as.character(input)[8],silent=TRUE)
+  # Level
+  LEVEL <- try(as.character(input)[9],silent=TRUE)
     # If no machine is specified, then it has to be this machine in which we are testing code!
     if(is.na(MACHINE)){
       MACHINE <- 'MAC'
@@ -69,6 +64,7 @@ input <- commandArgs(TRUE)
       SITE <- 'Cambridge'
       SMOOTHING <- '8mm'
       DESIGN <- 'boxcar10'
+      LEVEL <- 'SecondLevel'
       # Location of IDs of subjects which we sample
       LocSubjIDBOOLEAN <- TRUE
     }
@@ -76,15 +72,15 @@ input <- commandArgs(TRUE)
 # Libraries
 library(dplyr)
 
-# Set WD and base data directory
+# Set WD and base data directory of data processed at first level
 if(MACHINE=='HPC'){
-  wd <- paste('/user/scratch/gent/gvo000/gvo00022/vsc40728/1000FC/SecondLevel', sep = '')
-  data_base_dir <- paste('/user/data/gent/gvo000/gvo00022/vsc40728', sep = '')
+  wd <- paste('/user/scratch/gent/gvo000/gvo00022/vsc40728/1000FC/',LEVEL , sep = '')
+  data_firstLevel_dir <- paste('/user/data/gent/gvo000/gvo00022/vsc40728', sep = '')
 }
 if(MACHINE=='MAC'){
-  wd <- '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/1000FC/SecondLevel'
-  data_base_dir <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results'
-  if(isTRUE(LocSubjIDBOOLEAN)) LocSubjID <- paste(data_base_dir, '/', SITE, '/SecondLevel/IDs/', simulID, sep = '')
+  wd <- paste('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/1000FC/', LEVEL, sep = '')
+  data_firstLevel_dir <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results'
+  if(isTRUE(LocSubjIDBOOLEAN)) LocSubjID <- paste(data_firstLevel_dir, '/', SITE, '/', LEVEL ,'/IDs/', simulID, sep = '')
 }
 setwd(wd)
 
@@ -113,10 +109,10 @@ if(MACHINE=='MAC'){
 
 # Define the new output directory
 if(MACHINE=='HPC'){
-  Base_Output <- paste(data_base_dir, '/',SITE,'/SecondLevel/', SMOOTHING, '/', DESIGN, '/', sep = '')
+  Base_Output <- paste(wd, '/Results/', SITE, '/', SMOOTHING, '/', DESIGN, '/', sep = '')
 }
 if(MACHINE=='MAC'){
-  Base_Output <- paste(data_base_dir, '/',SITE,'/SecondLevel/', SMOOTHING, '/', DESIGN, '/', sep = '')
+  Base_Output <- paste(data_firstLevel_dir, '/',SITE,'/', LEVEL, '/', SMOOTHING, '/', DESIGN, '/', sep = '')
 }
 
 # TR (depending on scanning site)
@@ -133,12 +129,12 @@ npts <- NSUB
 multiple <- NSUB
 
 # Directory of input data
-  # In HPC version: this is located in the ouptut directory as we copy the subjects over there to resolve interference.
+  # In HPC version: first level analyses are copied next to the ouptut directory to resolve interference.
 if(MACHINE=='HPC'){
-  Base_Input <- paste(data_base_dir, '/',SITE,'/SecondLevel/',SMOOTHING,'/',DESIGN,'/',simulID,'/NSTUD_', sep = '')
+  Base_Input <- paste(Base_Output, simulID,'/NSTUD_', sep = '')
 }
 if(MACHINE=='MAC'){
-  Base_Input <- paste(data_base_dir, '/',SITE,'/',SMOOTHING,'/',DESIGN,'/', sep = '')
+  Base_Input <- paste(data_firstLevel_dir, '/',SITE,'/',SMOOTHING,'/',DESIGN,'/', sep = '')
 }
 
 
@@ -158,7 +154,7 @@ for(k in 1:NSTUD){
   # Let's change analysis options in the base design file
     # Give new name
     Modified_Design <- Base_Design
-    # Output directory
+    # Output directory: FSL will automatically create a new folder using the provided name + .gfeat
     output <- paste(Base_Output, simulID,'/', 'NSTUD_', k, sep = '')
     Modified_Design[grepl('outputdir', Modified_Design)] <- paste('set fmri(outputdir) "', output, '"', sep = '')
 
@@ -178,6 +174,7 @@ for(k in 1:NSTUD){
       EndInput <- which(grepl('4D AVW data or FEAT directory (5)', Modified_Design, fixed = TRUE)) + 3
 
       # Now create new lines, based on number of subjects and their IDs
+        # In HPC: create new folder NSTUD_$k_data, which will be next to NSTUD_$k.gfeat folder 
       InputLines <- c()
       for(s in 1:NSUB){
         InputLines <- rbind(InputLines, rbind(

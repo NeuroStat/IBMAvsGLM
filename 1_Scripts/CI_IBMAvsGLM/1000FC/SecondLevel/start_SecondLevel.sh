@@ -5,7 +5,7 @@
 #PBS -o output/output.file
 #PBS -e error/error.file
 #PBS -m a
-#PBS -l walltime=11:25:00
+#PBS -l walltime=5:00:00
 #
 
 #----------------------------------------------------#
@@ -27,7 +27,7 @@ cd $srcdir
 
 #----------------------------------------------------#
 # GO TIME!
-./SecondThirdLevel.sh ${PBS_ARRAYID}
+./SecondLevel.sh ${PBS_ARRAYID}
 #----------------------------------------------------#
 
 
