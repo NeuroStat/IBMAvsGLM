@@ -1,0 +1,179 @@
+---
+title: "R Notebook"
+output:
+  html_document: default
+  html_notebook: default
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+# Set starting seed
+set.seed(11121990)
+
+# Set WD
+wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/CI_GLMvsIBMA/1000FC"
+
+# Directories of the data for different scenario's
+DATAwd <- list(
+  'Take[8mmBox10]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results/Cambridge/ThirdLevel/8mm/boxcar10"
+	)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 1
+
+# Number of conficence intervals
+CIs <- c('MA-weightVar','GLM-t')
+NumCI <- length(CIs)
+
+# Number of executed runs
+nruns.tmp <- matrix(c(
+                1,2500
+              ), ncol=2, byrow=TRUE)
+nruns <- nruns.tmp[currentWD,2]
+
+
+# Number of subjects and studies
+nsub <- 20
+nstud <- 5
+
+# Dimension of brain
+DIM <- c(91,109,91)
+
+# True value
+trueVal <- 0
+
+# Load in libraries
+library(oro.nifti)
+library(dplyr)
+
+
+# Function for data wrangling: indicator for CI and true value
+indicating <- function(UPPER, LOWER, trueVal){
+	IND <- trueVal >= LOWER & trueVal <= UPPER
+	COVERAGE <- apply(IND, 1, mean, na.rm=TRUE)
+	return(COVERAGE)
+}
+
+
+
+##
+###############
+### Data Wrangling
+###############
+##
+
+###############################
+#### First load in all the data
+
+# Load the naming structure of the data
+load(paste(paste(DATAwd[[currentWD]], '/1/ObjectsRestMAvsGLM_1.RData',sep=''))); objects <- names(ObjectsRestMAvsGLM); rm(ObjectsRestMAvsGLM)
+OBJ.ID <- c(rep(objects[!objects %in% c("STHEDGE","STWEIGHTS")], each=prod(DIM)), rep(c("STHEDGE","STWEIGHTS"), each=c(prod(DIM)*nstud)))
+
+# Create ncols = nruns data frame. nrows = length of OBJ.ID
+AllData <- data.frame("NA" = rep(NA, length(OBJ.ID)))
+
+# Set warnings off
+options(warn = -1)
+
+# Check progress
+CheckProgr <- floor(seq(1,nruns,length.out=10))
+
+# Load in the data
+for(i in 1:50){
+  if(i %in% CheckProgr) print(paste('LOADING: AT ', (i/nruns)*100, '%', sep = ''))
+  CheckObj <- try(load(paste(DATAwd[[currentWD]], '/', i, '/ObjectsRestMAvsGLM_', i, '.RData', sep = '')), silent = TRUE)
+    if(class(CheckObj) == "try-error"){print(paste('Missing data in iteration ', i, sep = '')); next}
+
+  # Unlist data and bind to AllData
+  AllData <- unlist(ObjectsRestMAvsGLM, use.names = FALSE) %>%
+    matrix(., ncol = 1) %>% data.frame() %>% bind_cols(AllData, .)
+}
+
+# Remove first column
+AllData <- AllData[,-1]
+  head(AllData)
+
+# Does dimension of AllData match the lenght of the OBJ.ID?
+dim(AllData)[1]==length(OBJ.ID)
+```
+
+
+```{r}
+# Calculate coverage
+mean.coverage.weightVar.MA <-
+  mean.coverage.t.GLM <-
+  array(NA,dim=c(prod(DIM),1))
+mean.coverage.weightVar.MA[,1] <- indicating(UPPER = AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),],LOWER = AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),],trueVal = trueVal)
+mean.coverage.t.GLM[,1] <- indicating(UPPER = AllData[which(OBJ.ID=='CI.GLM.upper.t'),],LOWER = AllData[which(OBJ.ID=='CI.GLM.lower.t'),],trueVal = trueVal)
+
+
+# Put the 2 coverages in a list
+mean.coverages <- list('MA' = mean.coverage.weightVar.MA,'GLM' = mean.coverage.t.GLM)
+
+# Mean over all voxels
+CI.coverages <- data.frame(
+	'Mean' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,mean, na.rm = TRUE)}),ncol=1),
+	'SD' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,sd, na.rm = TRUE)}),ncol=1),
+	'CI' = factor(CIs, levels=CIs, labels=CIs)
+	)
+CI.coverages
+```
+
+
+```{r}
+#########################################################
+####################### CI LENGTH #######################
+#########################################################
+
+# Calculate CI length
+mean.length.weightVar.MA <-
+mean.length.t.GLM <-
+array(NA,dim=c(prod(DIM),1))
+
+mean.length.weightVar.MA[,1] <- apply(AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),] - AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),],1,mean, na.rm = TRUE)
+mean.length.t.GLM[,1] <- apply(AllData[which(OBJ.ID=='CI.GLM.upper.t'),] - AllData[which(OBJ.ID=='CI.GLM.lower.t'),],1,mean, na.rm = TRUE)
+
+
+# Put the 2 lengths in a list
+mean.lengths <- list('MA' = mean.length.weightVar.MA,'GLM' = mean.length.t.GLM)
+
+# Average over all voxels
+CI.lengths <- data.frame(
+	'Mean' = matrix(sapply(mean.lengths, FUN=function(...){apply(...,2,mean,na.rm = TRUE)}),ncol=1),
+	'SD' = matrix(sapply(mean.lengths, FUN=function(...){apply(...,2,sd,na.rm = TRUE)}),ncol=1),
+	'CI' = factor(CIs, levels=CIs, labels=CIs)
+	)
+CI.lengths
+```
+
+```{r}
+#########################################################
+################### STANDARDIZED BIAS ###################
+#########################################################
+
+MA.SDBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,sd,na.rm = TRUE)
+MA.MEANBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,mean,na.rm = TRUE)
+
+GLM.SDBETA <- apply(AllData[which(OBJ.ID=='GLM.COPE'),],1,sd, na.rm = TRUE)
+GLM.MEANBETA <- apply(AllData[which(OBJ.ID=='GLM.COPE'),],1,mean,na.rm = TRUE)
+
+mean.bias.MA <- matrix(((abs(MA.MEANBETA)-trueVal)/(MA.SDBETA))*100,ncol=1)
+mean.bias.GLM <- matrix(((abs(GLM.MEANBETA)-trueVal)/(GLM.SDBETA))*100,ncol=1)
+
+# Put the 2 bias values in a list
+mean.bias <- list('MA' = mean.bias.MA,'GLM' = mean.bias.GLM)
+
+# Average over all voxels
+CI.bias <- data.frame(
+	'Mean' = matrix(sapply(mean.bias, FUN=function(...){apply(...,2,mean,na.rm = TRUE)}),ncol=1),
+	'SD' = matrix(sapply(mean.bias, FUN=function(...){apply(...,2,sd,na.rm = TRUE)}),ncol=1),
+	'CI' = factor(CIs, levels=CIs, labels=c('MA', 'GLM'))
+	)
+CI.bias
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
