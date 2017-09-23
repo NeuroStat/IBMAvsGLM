@@ -12,8 +12,8 @@
 
 #----------------------------------------------------#
 # MODULES TO LOAD IN
-module load R/3.2.1-intel-2015a
-module load FSL/5.0.6-ictce-5.5.0
+module load FSL/5.0.9-intel-2016a
+module load R/3.2.3-intel-2016a
   . $FSLDIR/etc/fslconf/fsl.sh
 #----------------------------------------------------#
 
