@@ -340,6 +340,10 @@ for(t in 1:nstud){
 ####************####
 #### META-ANALYSIS: classical approach
 ####************####
+
+# Note: at the moment, there is no between study variability.
+# Hence, we do not bother using the random effects MA (YET)!
+
 # Calculate weighted average.
 MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS),1,sum))/(apply(STWEIGHTS,1,sum))
 
