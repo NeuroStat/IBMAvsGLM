@@ -182,7 +182,7 @@ for(t in 1:nstud){
   print(paste('At study ', t, ', scenario ',SCEN, ' in simulation ', K, sep=''))
   # For loop over nsub
   for(s in 1:nsub){
-    # Define two regions (which does nothing as there is no effect, )
+    # Define one region (which does nothing as there is no effect, )
     regions <- simprepSpatial(regions = 1, coord = TrueLocations, radius = list(TrueRadius), form ="cube", fading = 0)
 
     # Weighting structure.                                                                    MIND THE INDEX OF NOISE HERE!!!!!
