@@ -51,9 +51,13 @@ if [ "$COMPUTER" = HPC ] ; then
 	data=/user/scratch/gent/gvo000/gvo00022/vsc"$vsc"/1000FC/${Study}
 fi
 
-# Design of 'task'
+# Which type of design: block or event
+DESIGN=EVENT
+
+# Type of design of 'task'
 #DesignNew=boxcar10
-DesignNew=boxcar30
+#DesignNew=boxcar30
+DesignNew=event2
 
 # Length of boxcar periods (seconds)
 BoxcarOffNew="set fmri(off1) 30"
@@ -64,7 +68,7 @@ HighPassNew="set fmri(paradigm_hp) 60" #60 for 30 seconds on off, 20 for 10 seco
 
 
 #for Smoothing in 1 2 3 4 ; do
-for Smoothing in 1 3 ; do
+for Smoothing in 3 ; do
 
 	threads=0
 
@@ -103,36 +107,70 @@ for Smoothing in 1 3 ; do
 
       #---------------
       # Copy template design
-      cp "${design_directory}"/Design_templates/GLM${Study}.fsf ${data_directory}/
+			if [ "$DESIGN" = "BLOCK" ]; then
+      	cp "${design_directory}"/Design_templates/GLM${Study}.fsf ${data_directory}/
+			elif [ "$DESIGN" = "EVENT" ]; then
+				cp "${design_directory}"/Design_templates/GLM${Study}${DesignNew}.fsf ${data_directory}/
+			fi
 
       # Change smoothing output
-      sed -i '' "s/${SmoothingOutputOld}/${SmoothingOutputNew}/g" ${data_directory}/GLM${Study}.fsf
+			if [ "$DESIGN" = "BLOCK" ]; then
+      	sed -i '' "s/${SmoothingOutputOld}/${SmoothingOutputNew}/g" ${data_directory}/GLM${Study}.fsf
+			elif [ "$DESIGN" = "EVENT" ]; then
+				sed -i '' "s/${SmoothingOutputOld}/${SmoothingOutputNew}/g" ${data_directory}/GLM${Study}${DesignNew}.fsf
+			fi
 
       # Change design output
-      sed -i '' "s/${DesignOld}/${DesignNew}/g" ${data_directory}/GLM${Study}.fsf
+			if [ "$DESIGN" = "BLOCK" ]; then
+      	sed -i '' "s/${DesignOld}/${DesignNew}/g" ${data_directory}/GLM${Study}.fsf
+			elif [ "$DESIGN" = "EVENT" ]; then
+				sed -i '' "s/${DesignOld}/${DesignNew}/g" ${data_directory}/GLM${Study}${DesignNew}.fsf
+			fi
 
       # Change subject name
-      sed -i '' "s/${SubjectOld}/${SubjectNew}/g" ${data_directory}/GLM${Study}.fsf
+			if [ "$DESIGN" = "BLOCK" ]; then
+      	sed -i '' "s/${SubjectOld}/${SubjectNew}/g" ${data_directory}/GLM${Study}.fsf
+			elif [ "$DESIGN" = "EVENT" ]; then
+      	sed -i '' "s/${SubjectOld}/${SubjectNew}/g" ${data_directory}/GLM${Study}${DesignNew}.fsf
+			fi
 
       # Change smoothing
-      sed -i '' "s/${SmoothingOld}/${SmoothingNew}/g" ${data_directory}/GLM${Study}.fsf
+			if [ "$DESIGN" = "BLOCK" ]; then
+      	sed -i '' "s/${SmoothingOld}/${SmoothingNew}/g" ${data_directory}/GLM${Study}.fsf
+			elif [ "$DESIGN" = "EVENT" ]; then
+				sed -i '' "s/${SmoothingOld}/${SmoothingNew}/g" ${data_directory}/GLM${Study}${DesignNew}.fsf
+			fi
 
       # Change boxcar period time
-      sed -i '' "s/${BoxcarOffOld}/${BoxcarOffNew}/g" ${data_directory}/GLM${Study}.fsf
-      sed -i '' "s/${BoxcarOnOld}/${BoxcarOnNew}/g" ${data_directory}/GLM${Study}.fsf
-
+			if [ "$DESIGN" = "BLOCK" ]; then
+      	sed -i '' "s/${BoxcarOffOld}/${BoxcarOffNew}/g" ${data_directory}/GLM${Study}.fsf
+      	sed -i '' "s/${BoxcarOnOld}/${BoxcarOnNew}/g" ${data_directory}/GLM${Study}.fsf
       # Change highpass filter
-      sed -i '' "s/${HighPassOld}/${HighPassNew}/g" ${data_directory}/GLM${Study}.fsf
+      	sed -i '' "s/${HighPassOld}/${HighPassNew}/g" ${data_directory}/GLM${Study}.fsf
+			fi
 
 			#---------------
 			# Run analyses in parallel
-			feat ${data_directory}/GLM${Study}.fsf &
-			((threads++))
+			# ------------ BLOCK ---------------
+			if [ "$DESIGN" = "BLOCK" ]; then
+				feat ${data_directory}/GLM${Study}.fsf &
+				((threads++))
 
-			if [ $threads -eq "$MaximumThreads" ]; then
-					wait
-							threads=0
-					fi
+				if [ $threads -eq "$MaximumThreads" ]; then
+						wait
+								threads=0
+						fi
+			fi
+			# ------------ EVENT ---------------
+			if [ "$DESIGN" = "EVENT" ]; then
+				feat ${data_directory}/GLM${Study}${DesignNew}.fsf &
+				((threads++))
+
+				if [ $threads -eq "$MaximumThreads" ]; then
+						wait
+								threads=0
+						fi
+			fi
 
 			else
 			echo "This directory does not contain any fMRI data"
@@ -140,6 +178,4 @@ for Smoothing in 1 3 ; do
 
 	done
 done
-
-
 

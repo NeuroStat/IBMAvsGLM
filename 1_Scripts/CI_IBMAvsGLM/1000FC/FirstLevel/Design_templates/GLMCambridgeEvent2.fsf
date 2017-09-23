@@ -30,7 +30,7 @@ set fmri(featwatcher_yn) 0
 set fmri(sscleanup_yn) 0
 
 # Output directory
-set fmri(outputdir) "/home/andek/Research_projects/RandomGroupAnalyses/Results/Cambridge/4mm/boxcar30/sub00156"
+set fmri(outputdir) "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results/Cambridge/4mm/boxcar30/sub00156/results"
 
 # TR(s)
 set fmri(tr) 3.000000
@@ -254,7 +254,7 @@ set fmri(regstandard_dof) 12
 set fmri(regstandard_nonlinear_yn) 0
 
 # Control nonlinear warp field resolution
-set fmri(regstandard_nonlinear_warpres) 10 
+set fmri(regstandard_nonlinear_warpres) 10
 
 # High pass filter cutoff
 set fmri(paradigm_hp) 100
@@ -267,13 +267,13 @@ set fmri(totalVoxels) 28994112
 set fmri(ncopeinputs) 0
 
 # 4D AVW data or FEAT directory (1)
-set feat_files(1) "/home/andek/Data/fcon1000/Cambridge/sub00156/func/rest"
+set feat_files(1) "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/FCON_1000/Cambridge/sub00156/func/rest"
 
 # Add confound EVs text file
 set fmri(confoundevs) 0
 
 # Subject's structural image for analysis 1
-set highres_files(1) "/home/andek/Data/fcon1000/Cambridge/sub00156/anat/mprage_anonymized_brain"
+set highres_files(1) "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/FCON_1000/Cambridge/sub00156/anat/mprage_anonymized_brain.nii.gz"
 
 # EV 1 title
 set fmri(evtitle1) ""
@@ -307,7 +307,7 @@ set fmri(tempfilt_yn1) 1
 set fmri(deriv_yn1) 1
 
 # Custom EV file (EV 1)
-set fmri(custom1) "/home/andek/Research_projects/RandomGroupAnalyses/Design_templates/randomEventsCambridge.txt"
+set fmri(custom1) "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/1000FC/FirstLevel/Design_templates/randomEventsCambridge.txt"
 
 # Gamma sigma (EV 1)
 set fmri(gammasigma1) 3
@@ -331,7 +331,7 @@ set fmri(con_mode) orig
 set fmri(conpic_real.1) 1
 
 # Title for contrast_real 1
-set fmri(conname_real.1) ""
+set fmri(conname_real.1) "average"
 
 # Real contrast_real vector 1 element 1
 set fmri(con_real1.1) 1
@@ -343,7 +343,7 @@ set fmri(con_real1.2) 0
 set fmri(conpic_orig.1) 1
 
 # Title for contrast_orig 1
-set fmri(conname_orig.1) ""
+set fmri(conname_orig.1) "average"
 
 # Real contrast_orig vector 1 element 1
 set fmri(con_orig1.1) 1
