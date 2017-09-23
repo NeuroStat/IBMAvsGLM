@@ -211,7 +211,7 @@ for(t in 1:nstud){
       # Estimate residual (we need to extend the design matrix with an intercept)
       xIN <- cbind(1,x)
       BETA <- coef(model.lm)
-      res <- (t(Y.data - xIN %*% BETA) %*% (Y.data - xIN %*% BETA))/nscan - 2
+      res <- (t(Y.data - xIN %*% BETA) %*% (Y.data - xIN %*% BETA))/(nscan - 2)
       res <- diag(res)
       # Contrast: not interested in intercept
       CONTRAST <- matrix(c(0,1),nrow=1)
