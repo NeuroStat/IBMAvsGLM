@@ -82,7 +82,6 @@ if(MACHINE=='MAC'){
 
 # Load in libraries
 library(AnalyzeFMRI)
-library(fmri)
 library(lattice)
 library(gridExtra)
 library(oro.nifti)
@@ -194,7 +193,7 @@ pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
 design1 <- es1 * (pred-base) + base
 
 # Smooth the GT and put it into the map
-SmGT1 <- GaussSmoothArray(truth1, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
+SmGT1 <- AnalyzeFMRI::GaussSmoothArray(truth1, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
 SmoothGT <- SmGT1
 
 # Now get the smoothed signal
@@ -215,7 +214,7 @@ for(t in 1:nstud){
                               sd = whiteSigma), dim = c(DIM, nscan))
     
     # And smooth
-    smoothNoise <- GaussSmoothArray(whiteNoise, voxdim = voxdim,
+    smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
                                     ksize = width, sigma = diag(sigma,3))
     
     # Create image for this subject
