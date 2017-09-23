@@ -281,31 +281,48 @@ CI.GLM.lower.t <- GLM.COPE -  (qt(0.975,df=tdof_t1) * GLM.SE)
 ########################################################################################################################################################################
 ########################################################################################################################################################################
 
-# Put objects in list
-ObjectsRestMAvsGLM <- list(
-  'CI.MA.upper.weightVar' = CI.MA.upper.weightVar,
-  'CI.MA.lower.weightVar' = CI.MA.lower.weightVar,
-  'MA.WeightedAvg' = MA.WeightedAvg,
-  'CI.GLM.upper.t' = CI.GLM.upper.t,
-  'CI.GLM.lower.t' = CI.GLM.lower.t,
-  'GLM.COPE' = GLM.COPE,
-  'CI.MA.weightedVariance' = CI.MA.weightedVariance,
-  'STHEDGE' = STHEDGE,
-  'STWEIGHTS' = STWEIGHTS
-)
 
-# Save list in output folder
-save(ObjectsRestMAvsGLM, file = paste(Base_Output,simulID,'/ObjectsRestMAvsGLM_',simulID,'.RData',sep=''))
+# Write objects to separate .txt files
+write.table(CI.MA.upper.weightVar, file = paste(Base_Output,simulID, '/CI_MA_upper_weightVar.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+write.table(CI.MA.lower.weightVar, file = paste(Base_Output,simulID, '/CI_MA_lower_weightVar.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+write.table(MA.WeightedAvg, file = paste(Base_Output,simulID, '/MA_WeightedAvg.txt', sep = ''),
+            row.names = FALSE, col.names = FALSE)
+write.table(CI.GLM.upper.t, file = paste(Base_Output,simulID, '/CI_GLM_upper_t.txt', sep = ''),
+            row.names = FALSE, col.names = FALSE)
+write.table(CI.GLM.lower.t, file = paste(Base_Output,simulID, '/CI_GLM_lower_t.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+write.table(GLM.COPE, file = paste(Base_Output,simulID, '/GLM_COPE.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+write.table(CI.MA.weightedVariance, file = paste(Base_Output,simulID, '/CI_MA_weightedVariance.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+write.table(STHEDGE, file = paste(Base_Output,simulID, '/STHEDGE.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+write.table(STWEIGHTS, file = paste(Base_Output,simulID, '/STWEIGHTS.txt', sep = ''),
+              row.names = FALSE, col.names = FALSE)
+
+# Put objects in list
+# ObjectsRestMAvsGLM <- list(
+#   'CI.MA.upper.weightVar' = CI.MA.upper.weightVar,
+#   'CI.MA.lower.weightVar' = CI.MA.lower.weightVar,
+#   'MA.WeightedAvg' = MA.WeightedAvg,
+#   'CI.GLM.upper.t' = CI.GLM.upper.t,
+#   'CI.GLM.lower.t' = CI.GLM.lower.t,
+#   'GLM.COPE' = GLM.COPE,
+#   'CI.MA.weightedVariance' = CI.MA.weightedVariance,
+#   'STHEDGE' = STHEDGE,
+#   'STWEIGHTS' = STWEIGHTS
+# )
+#
+# # Save list in output folder
+# save(ObjectsRestMAvsGLM, file = paste(Base_Output,simulID,'/ObjectsRestMAvsGLM_',simulID,'.RData',sep=''))
 
 # Clean up objects
-rm(ObjectsRestMAvsGLM, MA.WeightedAvg, CI.MA.weightedVariance, CI.MA.upper.weightVar, CI.MA.lower.weightVar)
+rm(MA.WeightedAvg, CI.MA.weightedVariance, CI.MA.upper.weightVar, CI.MA.lower.weightVar)
 
 
 
-
-# str(ObjectsMAvsGLM)
-# summary(ObjectsMAvsGLM$MA.WeightedAvg)
-# hist(ObjectsMAvsGLM$MA.WeightedAvg)
 
 
 

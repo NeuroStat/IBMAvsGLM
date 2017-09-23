@@ -44,7 +44,7 @@ SITE=Cambridge
 # Smooting parameter in first level analyses
 SMOOTHING=8mm
 # Design in the first level analyses
-DESIGN=boxcar10
+DESIGN=event2
 #----------------------------------------------------#
 
 
