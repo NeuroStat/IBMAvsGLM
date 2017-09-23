@@ -77,6 +77,7 @@ trueVal <- 0
 library(AnalyzeFMRI)
 library(fmri)
 library(lattice)
+library(grid)
 library(gridExtra)
 library(oro.nifti)
 library(ggplot2)
@@ -222,6 +223,24 @@ CCI2 <- levelplot(array(mean.coverages[['IBMA']], dim=rep(sqrt(prod(DIM)),2)),
 grid.arrange(CCI1,CCI2,nrow=1,top = textGrob('CI - Coverage of each voxel over 3000 simulations.', gp=gpar(fontsize=20,font=1)))
 
 
+# Try with ggplot 
+plotCI <- data.frame(CI = rbind(mean.coverages[['MA']],mean.coverages[['IBMA']]),
+                 Type = rep(c("MA", "mixed effects GLM"), each = 64),
+                 x = factor(rep(rep(1:8,8),2)),
+                 y = factor(rep(rep(1:8, each = 8),2)))
+ggplot(plotCI, aes(x=x,y=y)) + geom_tile(aes(fill = CI)) + 
+  facet_wrap(~Type) +
+  scale_fill_gradient2(name = "", low = scales::muted("blue"), mid = "white",
+                       high = scales::muted("red"), midpoint = 0.95, space = "Lab",
+                       na.value = "grey50", guide = "colourbar") +
+  scale_x_discrete(name = "") + scale_y_discrete(name = "") + ggtitle("") +
+  theme_minimal() +
+  theme(strip.text = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.key.size = unit(0.9,"cm"))
+  
+  
+
 # Plotting the lengths
 LCI1 <- levelplot(array(mean.lengths[['MA']], dim=rep(sqrt(prod(DIM)),2)),
       col.regions = gray(100:0/100), at=seq(0,1,by=0.05), main='Meta-Analysis',xlab='',ylab='',
@@ -250,7 +269,42 @@ BCI2 <- levelplot(array(mean.bias[['IBMA']], dim=rep(sqrt(prod(DIM)),2)),
               panel=ValuesOnLevelPlot2D)
 grid.arrange(BCI1,BCI2,nrow=1, top = textGrob('Standardized bias (%) of each voxel over 3000 simulations.', gp=gpar(fontsize=20,font=1)))
 
+# Try with ggplot 
+PlotBias <- data.frame(bias = rbind(mean.bias[['MA']],mean.bias[['IBMA']]),
+                 Type = rep(c("MA", "mixed effects GLM"), each = 64),
+                 x = factor(rep(rep(1:8,8),2)),
+                 y = factor(rep(rep(1:8, each = 8),2)))
+ggplot(PlotBias, aes(x=x,y=y)) + geom_tile(aes(fill = bias)) + 
+  facet_wrap(~Type) +
+  scale_fill_gradient2(name = "", low = scales::muted("blue"), mid = "white",
+                       high = scales::muted("red"), midpoint = 0, space = "Lab",
+                       na.value = "grey50", guide = "colourbar") +
+  scale_x_discrete(name = "") + scale_y_discrete(name = "") + ggtitle("Average standardized bias") +
+  theme_minimal()
 
+# Maybe try the difference between the two, alongside table of average and SD
+DiffBias <- data.frame(Diffbias = c(mean.bias[['MA']] - mean.bias[['IBMA']]),
+                       x = factor(rep(1:8,8)),
+                       y = factor(rep(1:8, each = 8)))
+DiffBiasPlot <- ggplot(DiffBias, aes(x=x,y=y)) + geom_tile(aes(fill = Diffbias)) + 
+  scale_fill_gradient2(name = "", low = scales::muted("blue"), mid = "white",
+                       high = scales::muted("red"), midpoint = 0, space = "Lab",
+                       na.value = "grey50", guide = "colourbar") +
+  scale_x_discrete(name = "") + scale_y_discrete(name = "") + ggtitle("") +       # Standardized bias (MA) - standardized bias (GLM)
+  theme_minimal() +
+  theme(strip.text = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.key.size = unit(0.9,"cm"))
+
+
+tableBias <- data.frame(Type = CI.bias$CI, average = CI.bias$Mean, SD = CI.bias$SD)
+tt <- ttheme_default(colhead=list(fg_params = list(parse=TRUE)))
+tbl <- tableGrob(tableBias, rows=NULL, theme=tt)
+# Plot chart and table into one object
+grid.arrange(tbl , DiffBiasPlot,
+             nrow=1,
+             as.table=TRUE,
+             widths=c(1,2))
 
 
 ##
