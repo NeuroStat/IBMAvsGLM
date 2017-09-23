@@ -1,0 +1,499 @@
+---
+title: "IBMA vs GLM"
+author: "Han Bossier"
+date: "8 maart 2017"
+output:
+  html_document:
+    toc: yes
+  html_notebook:
+    theme: united
+    toc: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE,
+	comment = NA
+)
+```
+
+
+## Introduction
+
+In this report, we look at two approaches to do third level pooling of fMRI data. Either we use a meta-analysis approach. Or we apply a third level GLM on top of the two-stage GLM procedure. 
+This report is based on the _1000FC resting state_ part of the project (next to simulations).
+
+First, we have some theory, then the procedure and (preliminary) results.
+
+## Theory
+
+### Meta-analysis
+The first approach originates from the meta-analysis literature (mostly for clinical trials). The idea is to calculate a weighted average of the effect sizes of all studies obtained through literature search. Then, we can construct a confidence interval (CI) around this weighted average. Details are given below:
+
+#### Mathematical definition
+Let us have $k$ studies with $\hat{\theta_i}$ the estimated effect size in study $i$. Consider for a meta-analysis the estimator for a weighted average ($\mu$) as:
+
+$$ \hat{\mu} = \frac{\sum_i\hat{w_i}\hat{\theta}_i}{\sum_i \hat{w_i}}$$ 
+with $\hat{w_i}$ the estimated optimal weights (either fixed or random effects meta-analysis). \
+The sampling variance of $\hat{\mu}$ is given by: 
+$$ V(\hat{\mu}) =\frac{1}{\sum_i\hat{w_i}}$$
+
+In the report *coverages*, we have investigated the optimal method to construct such a confidence interval. This is based on a study by [Sanchez-Meca and Martin-Martinez, 2008](https://www.ncbi.nlm.nih.gov/pubmed/18331152).
+This is based on weighting the observed variance of $\hat{\mu}$ before constructing a t-based CI. \
+The weighted variance CI assumes a Student's *t* distribution with $k-1$ degrees of freedom. The sampling variance of $\hat{\mu}$ is extended by applying the following weighting scheme:
+$$ \hat{V_w}(\hat{\mu}) = \frac{\sum_i\hat{w_i}(\hat{\theta_i} - \hat{\mu})^2}{(k - 1)\sum_i\hat{w_i}} $$
+
+The CI around the weighted average effect size can then be calculated as:
+$$ \hat{\mu} \pm t_{k-1,1-\alpha/2}\sqrt{\hat{V_w}(\hat{\mu})} $$
+
+Note that by choosing the optimal weighting structure $\hat{w_i}$, we can either ignore between study variability (by choosing a fixed effects meta-analysis). Or incorporate this (random effects meta-analysis).
+
+### GLM approach.
+The GLM approach extends the traditional way to analyze an fMRI experiment. Typically, we will use a two-stage GLM when analyzing fMRI data. The first stage, within subjects, relates the design of the experiment to the observed BOLD signal in each voxel in the brain. The second stage pools subjects according to a group design (between subjects). In this stage, we can assume that the true signal varries between subjects (which is a mixed model). \
+At this stage, we can add an extra stage to the GLM procedure by re-using the mixed effects model at stage 2 with individual studies as input. Effectively, we get stage 1-2-3 leading to *within* subject - *between* subject - *between sudies*.
+
+#### Mathematical definition
+##### Level 1
+At each stage, we calculate the COPE and VARCOPES which are being sent to the next level in the GLM. \
+The 3 level GLM starts at the first level by relating the design of the experiment to the observed time series for each individual. For a given voxel and each subject *k*, we have:
+
+$$ Y_k = X_k\beta_k+\epsilon_k  $$
+
+With $Y_k$ the $T \times 1$ observed BOLD time series at that voxel, $X_k$ the $T \times p$ design matrix (containing *p* regressors), $\beta_k$ a $p \times 1$ vector of parameters and finally $\epsilon_k$ the $T \times 1$ error term. 
+The first level COPE map is estimated by:
+
+$$ c\hat{\beta}_k=c(X'_kX_k)^{-1}X'_kY_k $$
+
+Here we assume assume no autocorrelation in the time series. The VARCOPE map is calculated by:
+
+$$ \hat{Var}(c\hat{\beta}_k) = (X'_kX_k)^{-1}c'\hat{\sigma}^2_k $$
+With:
+$$ \hat{\sigma}^2_k = (Y - X\hat{\beta}_k)'(Y - X\hat{\beta}_k)/(T - p) $$
+
+##### Level 2
+The second level GLM, we apply a group model:
+
+$$ Y_G = X_G\beta_G+\epsilon^{*}_G $$
+With $X_G$ the $N \times p_G$ group-level design matrix, $\beta_G$ the group level parameter vector and $\epsilon^{*}_G$ the imperfect estimated group error (due to using first level contrasts) vector in which $Var(\epsilon_G)$ contains both intrasubject as well as between-subject variance. The group level parameters are estimated through:
+
+$$ \hat{\beta_G} = X^{-}_GY_G $$ In which $^{-}$ denotes the pseudo-inverse. \
+The GLS approach which is used in FSL's FLAME1 mixed effects approach assumes that:
+$$ Var(\epsilon^{*}_G) = \sigma^2I_N + Var_{\beta}(Y_G) $$ 
+
+In which the $\beta$ subscript denotes this being intrasubject variance. The estimates of these variances are used from the first level. The $\sigma^2_G$ is estimated through an iterative estimation algorithm (pressumable REML).
+
+##### Level 3
+Finally, the third level repeats the second level with the object of interest now being studies instead of subjects. Hence, we apply a study model:
+
+$$ Y_S = X_S\beta_S+\epsilon^{**}_S $$
+
+In the end, we would like to calculate a confidence interval around the contrast of parameter estimates (the beta coefficients belonging to the contrast of interest). The GLS approach in FSL estimates the parameters by assuming a multivariate non-central t-distribution with $k-1$ degrees of freedom. Hence, we calculate the CI as:
+
+$$ \hat{\beta}_S \pm t_{k-1,1-\alpha/2}\sqrt{\hat{Var}(\hat{\beta}_S)} $$
+
+
+## Performance Measures
+We will check the performance of the two methods by modeling task fMRI designs onto resting state fMRI (1000FC project) after which we calculate the:
+
+  1. standardized bias
+  2. average confidence interval length
+  3. coverage.
+  
+Consider the estimate of interest $\hat{\theta}$ either being the weighted average in the meta-analysis or the $\beta_S$ parameter in the third level GLM. Then the standardized bias is defined as:
+
+$$ \left(\frac{\bar{\hat{\theta}} - \theta}{SE(\hat{\theta})})\right) \times 100 $$
+
+The average confidence interval length is obtained by subtracting the upper limit of the CI from the lower limit and dividing by $B$, the number of iterations.
+
+The coverage is the proportion of times the $100 (1 - \alpha)\%$ CI contains the true value $\theta = 0$.
+
+
+
+## 1000FC
+
+More details can be found at this [Github page](https://github.com/NeuroStat/IBMAvsGLM/blob/c0d310a04bc22511d74f595d0b00aede9a3e34c1/1_Scripts/CI_IBMAvsGLM/1000FC/README.md).
+
+
+### Third Level
+At this moment, we have 500 iterations in which we sample 20 subjects at level 2 into 5 studies at level 3. No subjects are sampled twice in one iteration! 
+The design is a random event related design.
+
+
+
+## Analysis
+#### Parameters
+First we load in functions and set some parameters:
+```{r}
+# Set starting seed
+set.seed(11121990)
+
+# Set WD
+wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/CI_GLMvsIBMA/1000FC"
+
+# Directories of the data for different scenario's
+DATAwd <- list(
+  'Take[8mmBox10]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results/Cambridge/ThirdLevel/8mm/boxcar10",
+  'Take[8mmEvent2]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results/Cambridge/ThirdLevel/8mm/event2"
+	)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 2
+
+# Number of conficence intervals
+CIs <- c('MA-weightVar','GLM-t')
+NumCI <- length(CIs)
+
+# Number of executed runs
+nruns.tmp <- matrix(c(
+                1,2500,
+                2,500
+              ), ncol=2, byrow=TRUE)
+nruns <- nruns.tmp[currentWD,2]
+
+
+# Number of subjects and studies
+nsub <- 20
+nstud <- 5
+
+# Dimension of brain
+DIM <- c(91,109,91)
+
+# True value
+trueVal <- 0
+
+# Load in libraries
+library(oro.nifti)
+library(dplyr)
+library(lattice)
+library(grDevices)
+library(ggplot2)
+library(data.table)
+
+# Function to count the number of instances in which true value is between lower and upper CI.
+indicator <- function(UPPER, LOWER, trueval){
+  IND <- trueval >= LOWER & trueval <= UPPER
+  IND[is.na(IND)] <- 0
+  return(IND)
+}
+
+# Funtion to count the number of recorded values
+counting <- function(UPPER, LOWER){
+  count <- (!is.na(UPPER) & !is.na(LOWER))
+  return(count)
+}
+```
+
+
+#### Mask
+For each third level, we have a mask (0-1 map) which is the intersection of all copes coming from the second level. To remove edge effects when comparing over all iterations, we first calculate an universal mask over all iterations. This is again the intersection (`apply(AllMask, 1, prod)`) of all masks coming from the third levels. 
+
+```{r}
+##
+###############
+### Data Wrangling
+###############
+##
+
+######################################################
+# First we create a universal mask over all iterations
+######################################################
+
+# Set warnings off
+options(warn = -1)
+
+# Vector to check progress
+CheckProgr <- floor(seq(1,nruns,length.out=10))
+
+# Vector of simulations where we have a missing mask
+missingMask <- c()
+
+# Do you want to make an universal mask again?
+WRITEMASK <- FALSE
+if(isTRUE(WRITEMASK)){
+  # Vector with all masks in it
+  AllMask <- c()
+
+  # Load in the masks
+  for(i in 1:nruns){
+    # Print progress
+    if(i %in% CheckProgr) print(paste('LOADING MASKS. NOW AT ', (i/nruns)*100, '%', sep = ''))
+
+    # Try reading in mask, then go to one column and convert to data frame.
+    CheckMask <- try(readNIfTI(paste(DATAwd[[currentWD]], '/', i,'/mask.nii', sep = ''))[,,,1] %>%
+              matrix(.,ncol = 1) %>% data.frame(), silent = TRUE)
+      # If there is no mask, skip iteration
+      if(class(CheckMask) == "try-error"){ missingMask <- c(missingMask, i); next}
+
+      # Some masks are broken: if all values are zero: REPORT
+      if(all(CheckMask == 0)){print(paste("CHECK MASK AT ITERATION ", i, sep = "")); next}
+
+    # Bind the masks of all iterations together
+    AllMask <- bind_cols(AllMask, CheckMask)
+    rm(CheckMask)
+  }
+
+  # Take product to have universal mask
+  UnivMask <- apply(AllMask, 1, prod)
+
+  # Better write this to folder
+  niftiimage <- nifti(img=array(UnivMask, dim = DIM),dim=DIM)
+  writeNIfTI(niftiimage,filename=paste(DATAwd[[currentWD]],'/universalMask',sep=''),gzipped=FALSE)
+}
+if(isTRUE(!WRITEMASK)){
+  # Read in mask
+  UnivMask <- readNIfTI(paste(DATAwd[[currentWD]],'/universalMask.nii', sep = ''))[,,] %>%
+            matrix(.,ncol = 1)
+}
+```
+
+The amount of masked voxels:
+```{r}
+# Amount of masked voxels
+sum(UnivMask)
+```
+
+#### CI coverage
+All objects coming from third level (copes, varcopes, weighted averages, CIs from both procedures, hedges'g and weights of MA) are contained in one *.txt* file per iteration. We first load in the names and define the vectors containing CI coverage.
+```{r}
+# Load the naming structure of the data
+load(paste(paste(DATAwd[['Take[8mmBox10]']], '/1/ObjectsRestMAvsGLM_1.RData',sep=''))); objects <- names(ObjectsRestMAvsGLM); rm(ObjectsRestMAvsGLM)
+OBJ.ID <- c(rep(objects[!objects %in% c("STHEDGE","STWEIGHTS")], each=prod(DIM)), rep(c("STHEDGE","STWEIGHTS"), each=c(prod(DIM)*nstud)))
+
+objects.CI <- objects[grepl(c('upper'), objects) | grepl(c('lower'), objects)]
+
+# Pre-define the CI coverage, length and bias vectors in which we sum the values
+# After running nruns, divide by amount of obtained runs.
+summed.coverage.IBMA <-
+  summed.coverage.GLM <-
+  array(0,dim=c(sum(UnivMask == 1),1))
+
+# Keeping count of amount of values
+counterMA <- counterGLM <- 0
+```
+
+
+Now we loop over all iterations (or as much iterations as possible, now 500) and count whether true value is in CI for both procedures YES/NO.
+```{r cache = TRUE}
+# Load in the data
+t1 <- Sys.time()
+for(i in 1:500){
+  if(i %in% CheckProgr) print(paste('PROCESSING. NOW AT ', (i/nruns)*100, '%', sep = ''))
+
+    # CI coverage: loop over the two procedures
+    for(p in 1:2){
+      objUP <- objects.CI[grepl(c('upper'), objects.CI)][p] %>% gsub(".", "_",.,fixed = TRUE)
+      objLOW <- objects.CI[grepl(c('lower'), objects.CI)][p] %>% gsub(".", "_",.,fixed = TRUE)
+
+      UP <- try(fread(file = paste(DATAwd[[currentWD]], '/', i, '/', objUP, '.txt', sep = ''), header = FALSE) %>% filter(., UnivMask == 1), silent = TRUE)
+              if(class(UP) == "try-error"){print(paste('Missing data in iteration ', i, sep = '')); next}
+      LOW <- fread(file = paste(DATAwd[[currentWD]], '/',i, '/', objLOW, '.txt', sep = ''), header = FALSE) %>% filter(., UnivMask == 1)
+      if(grepl('MA', x = objUP)){
+        summed.coverage.IBMA[,1] <- summed.coverage.IBMA[,1] +
+          indicator(UPPER = UP, LOWER = LOW, trueval = 0)
+        counterMA <- counterMA + counting(UPPER = UP, LOWER = LOW)
+      }else{
+        summed.coverage.GLM[,1] <- summed.coverage.GLM[,1] +
+          indicator(UPPER = UP, LOWER = LOW, trueval = 0)
+        counterGLM <- counterGLM + counting(UPPER = UP, LOWER = LOW)
+      }
+      rm(objUP, objLOW, UP, LOW)
+    }
+    rm(CheckObj)
+}
+Sys.time() - t1
+```
+
+To calculate the coverage, we divide the coverage by the amount of times there was an upper and lower limit CI (counter[NAME]]). Note that we use a rather cumbersome way to calculate the CI coverage. Namely, we loop over iterations and add an indicator value (true value in CI, yes/no = 1/0) to an object. And later on divide this with the amount of times we have recoreded CIs.
+This is because we quickly run into memory problems (unable to load in all simulations at once). Hence I am in the process of finding the most efficient way to calculate this.
+
+The vectors *summed.coverage.[NAME]* are the sum of indicator values (true value in CI: 1 or 0) in each masked voxel. 
+
+To recap: 
+
+* *counterMA* or *counterGLM* are two vectors of length `sum(UnivMask == 1)`. They contain indicator values whether or not (1/0) we have an upper limit AND a lower limit of the CI.
+* *summed.coverage.MA* and *summed.coverage.GLM* are vectors with the summed indicator values (true value in CI: 1 or 0) and length `sum(UnivMask == 1)`.
+
+Let us check some descriptive statistics of these last two vectors:
+
+```{r}
+summary(summed.coverage.IBMA)
+summary(summed.coverage.GLM)
+```
+
+How many values have we recorded?
+
+```{r}
+sample_n(data.frame(counterMA), size = 10)
+table(counterMA)
+sample_n(data.frame(counterGLM), size = 10)
+table(counterGLM)
+```
+
+We can already see that in some iterations for the GLM procedure, there are less values recorded in some voxels. Note that the MA approach is based on the same cope map as the one used in the GLM procedure! 
+
+Can we locate these voxels?
+```{r fig.width = 10, fig.height = 12}
+emptBrain <- array(0, dim = prod(DIM))
+emptBrain[which(UnivMask == 1)] <- counterGLM
+  # Put non-masked values to NA
+  emptBrain[which(UnivMask == 0)] <- NA
+  # Remove values where we have 95% of the data
+  MinValue <- table(counterGLM)[table(counterGLM) > quantile(table(counterGLM), .95)] %>% 
+              names() %>% min() %>% as.numeric()
+  emptBrain[which(emptBrain >= MinValue)] <- 0
+
+# Zoom in at slice z = 70
+levelplot(array(emptBrain, dim = DIM)[,,70], col.regions = terrain.colors)
+```
+
+So, it seems to involve edge effects. Note that this means we have less data at those voxels. This does not imply that the coverage is low at these edges.
+
+We will now turn to the distribution of the coverages. We start with a histogram of the observed coverages in all masked voxels. 
+```{r}
+# Histogram
+hist(summed.coverage.IBMA/counterMA, main = 'Coverages in all masked voxels - IBMA')
+hist(summed.coverage.GLM/counterGLM, main = 'Coverages in all masked voxels - GLM')
+```
+
+Or through a violin plot of the coverages over all voxels:
+```{r}
+# Violin plot
+ViolinPlot <- data.frame(Coverages = c((summed.coverage.IBMA/counterMA),
+                                    (summed.coverage.GLM/counterGLM)),
+                        Method = rep(c('IBMA', 'GLM'), each = length(summed.coverage.IBMA)))
+ggplot(ViolinPlot, aes(x = Method, y=Coverages)) + geom_violin() + coord_flip() +
+  ggtitle("Violin plot of coverages in all voxels")
+```
+
+Summary and averages of these coverages over all voxels:
+```{r}
+# Summary of coverages and average over all voxels in MA
+summary(summed.coverage.IBMA/counterMA)
+mean(summed.coverage.IBMA/counterMA)
+
+
+# Summary of coverages and average over all voxels in GLM
+summary(summed.coverage.GLM/counterGLM)
+mean(summed.coverage.GLM/counterGLM)
+
+```
+
+
+Now we observe voxels which have a low coverage, _consistently_ over all simulations in the GLM procedure. We can check whether these are the same voxels as the ones observed above.
+
+```{r fig.width = 10, fig.height = 12}
+# Location of max COPE value at third level
+emptBrainMax <- array(0, dim = prod(DIM))
+emptBrainMin <- array(0, dim = prod(DIM))
+for(i in 1:500){
+  GCOPE <- fread(file = paste(DATAwd[[currentWD]], '/', i, '/GLM_COPE.txt', sep = ''), header = FALSE)
+  posMAX <- which(GCOPE == max(GCOPE), arr.ind = TRUE)[1]
+  posMIN <- which(GCOPE == min(GCOPE), arr.ind = TRUE)[1]
+
+  emptBrainMax[posMAX] <- emptBrainMax[posMAX] + 1
+  emptBrainMin[posMIN] <- emptBrainMin[posMIN] + 1
+}
+table(emptBrainMax)
+table(emptBrainMin)
+
+emptBrainMax[UnivMask == 0] <- emptBrainMin[UnivMask == 0] <- NA
+
+zMAX <- which(array(emptBrainMax, dim = DIM) == max(array(emptBrainMax, dim = DIM), na.rm = TRUE),
+arr.ind = TRUE)[3]
+zMIN <- which(array(emptBrainMin, dim = DIM) == max(array(emptBrainMin, dim = DIM), na.rm = TRUE),
+arr.ind = TRUE)[3]
+
+levelplot(array(emptBrainMax, dim = DIM)[,,zMAX], main = 'Position out of 500 simulations of the maximum COPE value',
+          col.regions = rainbow(max(emptBrainMax, na.rm = TRUE)), cuts = max(emptBrainMax, na.rm = TRUE))
+levelplot(array(emptBrainMax, dim = DIM)[,,42], main = 'Position out of 500 simulations of the maximum COPE value',
+          col.regions = rainbow(max(emptBrainMax, na.rm = TRUE)), cuts = max(emptBrainMax, na.rm = TRUE))
+levelplot(array(emptBrainMin, dim = DIM)[,,zMIN], main = 'Position out of 500 simulations of the minimum COPE value',
+          col.regions = rainbow(max(emptBrainMin, na.rm = TRUE)), cuts = max(emptBrainMin, na.rm = TRUE))
+
+```
+
+We now look at the average third level COPE value over 500 iterations.
+```{r cache = TRUE, fig.width = 10, fig.height = 12}
+GCOPE_ALL <- data.frame('NA' = array(NA, dim = prod(DIM))) %>% tbl_df()
+for(i in 1:500){
+  GCOPE <- fread(file = paste(DATAwd[[currentWD]], '/', i, '/GLM_COPE.txt', sep = ''), header = FALSE, col.names = as.character(i))
+  GCOPE_ALL <- bind_cols(GCOPE_ALL, GCOPE)
+}
+GCOPE_ALL <- select(GCOPE_ALL, -1)
+
+meanGCOPE <- apply(GCOPE_ALL, 1, mean)
+meanGCOPE[UnivMask==0] <- NA
+levelplot(array(meanGCOPE, dim = DIM), main = 'Average third level COPE value over 500 iterations',
+          col.regions = topo.colors)
+```
+
+Or the t-value
+
+```{r}
+nsim <- 500
+testdata <- 0
+
+TVAL_ALL <- data.frame('NA' = array(NA, dim = prod(DIM))) %>% tbl_df()
+for(i in 1:nsim){
+  GTSTAT <- try(readNIfTI(fname =
+    paste(DATAwd[[currentWD]], '/', i, '/GLM_stats/tstat1.nii.gz', sep = ''))[,,] %>% array(.,dim = prod(DIM)) %>%
+    data.frame(tstat = .) %>% tbl_df(), silent = TRUE)
+  if(class(TSTAT) == "try-error"){testdata <- testdata + 1; next}
+  TVAL_ALL <- bind_cols(TVAL_ALL, GTSTAT)
+}
+colnames(TVAL_ALL) <- seq(0,(nsim - testdata))
+TVAL_ALL <- select(TVAL_ALL, -1)
+
+meanGTSTAT <- apply(TVAL_ALL, 1, mean)
+meanGTSTAT[UnivMask==0] <- NA
+levelplot(array(meanGTSTAT, dim = DIM), main = 'Average third level T-value over 500 iterations',
+          col.regions = topo.colors)
+```
+
+
+## Check at second level
+#### COPE values
+```{r}
+nsim <- 500
+GCOPE_SECONDL <- data.frame('NA' = array(NA, dim = prod(DIM))) %>% tbl_df()
+testdata <- 0
+for(i in 1:nsim){
+  GCOPE <- try(readNIfTI(fname = paste('/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results/Cambridge/SecondLevel/8mm/boxcar10/', i, '/NSTUD_1.gfeat/cope1.feat/stats/cope1.nii', sep = ''))[,,] %>% array(.,dim = prod(DIM)) %>%
+    data.frame(cope = .) %>% tbl_df(), silent = TRUE)
+  if(class(GCOPE) == "try-error"){testdata <- testdata + 1; next}
+  GCOPE_SECONDL <- bind_cols(GCOPE_SECONDL, GCOPE)
+}
+colnames(GCOPE_SECONDL) <- seq(0,(nsim - testdata))
+GCOPE_SECONDL <- select(GCOPE_SECONDL, -1)
+
+meanGCOPE <- apply(GCOPE_SECONDL, 1, mean)
+meanGCOPE[UnivMask==0] <- NA
+levelplot(array(meanGCOPE, dim = DIM), main = paste('Average second level COPE value over ', nsim, ' iterations',sep = ''),
+          col.regions = topo.colors)
+```
+
+
+#### T-values
+
+```{r}
+nsim <- 500
+TSTAT_SECONDL <- data.frame('NA' = array(NA, dim = prod(DIM))) %>% tbl_df()
+testdata <- 0
+for(i in 1:nsim){
+  TSTAT <- try(readNIfTI(fname = paste('/Volumes/2_TB_WD_Elements_10B8_Han/PhD/IBMAvsGLM/Results/Cambridge/SecondLevel/8mm/boxcar10/', i, '/NSTUD_1.gfeat/cope1.feat/stats/tstat1.nii.gz', sep = ''))[,,] %>% array(.,dim = prod(DIM)) %>%
+    data.frame(tstat = .) %>% tbl_df(), silent = TRUE)
+  if(class(TSTAT) == "try-error"){testdata <- testdata + 1; next}
+  TSTAT_SECONDL <- bind_cols(TSTAT_SECONDL, TSTAT)
+}
+colnames(TSTAT_SECONDL) <- seq(0,(nsim - testdata))
+TSTAT_SECONDL <- select(TSTAT_SECONDL, -1)
+
+meanTSTAT <- apply(TSTAT_SECONDL, 1, mean)
+meanTSTAT[UnivMask==0] <- NA
+levelplot(array(meanTSTAT, dim = DIM), main = paste('Average second level T-value over ', nsim, ' iterations',sep = ''),
+          col.regions = topo.colors)
+
+```
+
