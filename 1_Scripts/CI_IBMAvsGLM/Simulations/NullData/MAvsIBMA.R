@@ -99,7 +99,7 @@ if(MACHINE == 'MAC'){
   source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
 }
 if(MACHINE == 'HPC'){
-  source('/user/scratch/gent/gvo000/gvo00022/vsc40728/Simulation/functions.R')
+  source('/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA/functions.R')
 }
 
 
