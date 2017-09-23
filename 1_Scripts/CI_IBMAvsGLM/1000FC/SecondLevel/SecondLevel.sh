@@ -21,7 +21,7 @@ SIMUL=$1
 # Which machine: HPC or MAC
 MACHINE=HPC
 # Number of simulation
-NSIM=3000
+NSIM=1000
 # Level
 LEVEL=SecondLevel
 # Number of subjects
@@ -33,7 +33,7 @@ SITE=Cambridge
 # Smooting parameter in first level analyses
 SMOOTHING=8mm
 # Design in the first level analyses
-DESIGN=boxcar10
+DESIGN=event2
 # Location of the scripts, data, and IDs for sampling subjects
 if [ "$MACHINE" = MAC ] ; then
 	SCRPT=/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/1000FC/"${LEVEL}"
@@ -98,7 +98,7 @@ do
 	# Get into simulation folder
 	cd "${SIMULDIR}"
 
-	# Create folder NSTUD_$K.gfeat
+	# Create folder NSTUD_$k_data.gfeat
 	mkdir NSTUD_"$k"_data
 
 	# Copy the subjects, read in from the LocSubjID file to NSTUD_$K.gfeat

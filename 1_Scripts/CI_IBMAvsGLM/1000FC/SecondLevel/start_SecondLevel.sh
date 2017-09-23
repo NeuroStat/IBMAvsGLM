@@ -5,7 +5,7 @@
 #PBS -o output/output.file
 #PBS -e error/error.file
 #PBS -m a
-#PBS -l walltime=5:00:00
+#PBS -l walltime=7:00:00
 #
 
 #----------------------------------------------------#
