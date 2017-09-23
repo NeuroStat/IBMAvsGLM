@@ -1,5 +1,5 @@
 # Reports
-Only the latest report is located here as these files tend to be large and unhandy in combination with Github.
+Only the latest reports are located here as these files tend to be large and not very practical in combination with Github.
 Other reports are saved locally.
 
 # Getting started with Git
