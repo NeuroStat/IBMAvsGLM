@@ -127,7 +127,7 @@ onsets <- list(on1)
 duration <- list(20)
 
 # Effect size
-es1 <- 0.02
+es1 <- 0.01
 base <- 100
 actes1 <- es1*base
 
@@ -177,6 +177,7 @@ truthdesign <- simprepTemporal(1,1,onsets=1,effectsize = 1, durations=1, TR=1, a
 area1 <- simprepSpatial(regions=1, coord=list(TrueLocations), radius=ext, form="sphere", fading=0)
 truth1 <- simVOLfmri(design=truthdesign, image=area1, dim=DIM, SNR=1,noise="none")[,,,1]
 GroundTruth <- ifelse(truth1 > 0, 1, 0)
+#save(GroundTruth, file = '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/GroundTruth_Act.Rda')
 
 #######################################
 #### DESIGN AND SIGNAL TIME SERIES ####
@@ -193,7 +194,7 @@ pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
 design1 <- es1 * (pred-base) + base
 
 # Smooth the GT and put it into the map
-SmGT1 <- AnalyzeFMRI::GaussSmoothArray(truth1, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
+SmGT1 <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
 SmoothGT <- SmGT1
 
 # Now get the smoothed signal
