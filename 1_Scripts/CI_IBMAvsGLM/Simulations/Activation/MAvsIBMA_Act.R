@@ -92,7 +92,7 @@ library(Hmisc)
 library(devtools)
 library(neuRosim)
 
-# Load in functions from FixRan study: THIS HAS TO COME AFTER ALL 
+# Load in functions from FixRan study: THIS HAS TO COME AFTER ALL
 # LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
 if(MACHINE == 'MAC'){
   source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
@@ -137,7 +137,7 @@ sigma <- fwhm/sqrt(8*log(2))
 width <- 5
 
 # Sigma of white noise
-whiteSigma <- 7
+whiteSigma <- 2
 
 ##############################
 #### Scenario specific details
@@ -146,6 +146,13 @@ whiteSigma <- 7
 # At this moment: one amount of subjects and studies
 nsub <- 100
 nstud <- 5
+
+# True t-value at group level: 
+# trueBetaSignal = 0.01
+# Var(Beta_subj) = whiteSigma^2 / (sum(X - mean(X))^2)
+# Var(Beta_stud) = Var(Beta_subj) / n
+# T = trueBeta / sqrt(Var(Beta_stud))
+0.01/sqrt((whiteSigma^2/(var(pred) * (nscan-1))) / nsub)
 
 # At the moment, only consider one noise structure:
 Noise <- list(
@@ -213,17 +220,18 @@ for(t in 1:nstud){
     # Make white noise
     whiteNoise <- array(rnorm(n = (prod(DIM) * nscan), mean = 0,
                               sd = whiteSigma), dim = c(DIM, nscan))
-    
+
     # And smooth
-    smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
-                                    ksize = width, sigma = diag(sigma,3))
-    
+    #smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
+    #                                ksize = width, sigma = diag(sigma,3))
+    smoothNoise <- whiteNoise
+
     # Create image for this subject
     SubjData <- Rawsignal + smoothNoise
-    
+
     # Transform it to correct dimension (Y = t x V)
     Y.data <- t(matrix(SubjData,ncol=nscan))
-    
+
     ####************####
     #### ANALYZE DATA: 1e level GLM
     ####************####
@@ -231,7 +239,7 @@ for(t in 1:nstud){
     model.lm <- lm(Y.data ~ pred)
     b1 <- coef(model.lm)['pred',]
     COPE[,s] <- b1
-    
+
     # VARCOPE --> estimate residual (we need to extend the design matrix with an intercept)
     xIN <- cbind(1,pred)
     BETA <- coef(model.lm)
@@ -241,15 +249,16 @@ for(t in 1:nstud){
     CONTRAST <- matrix(c(0,1),nrow=1)
     # Calculate varcope
     VARCOPE[,s] <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST) %*% res
-    
+
     # Clean objects
     rm(model.lm, b1, xIN, BETA,res,CONTRAST)
-    
+
   }
+  summary(lm(COPE[355,] ~ 1))
   ####************####
   #### GROUP ANALYSIS: 2e level using FLAME
   ####************####
-  
+
   # Write auxiliarly files to DataWrite. We need:
   # GRCOPE in nifti
   # GRVARCOPE in nifti
@@ -257,7 +266,7 @@ for(t in 1:nstud){
   # design.mat file
   # design.grp file
   # design.con file
-  
+
   #----- 1 ----#
   ### Design.mat
   fileCon <- paste(DataWrite,"/design.mat",sep="")
@@ -265,10 +274,10 @@ for(t in 1:nstud){
   cat('/NumWaves\t1
       /NumPoints\t',paste(nsub,sep=''),'
       /PPheights\t\t1.000000e+00
-      
+
       /Matrix
       ',rep("1.000000e+00\n",nsub),file=fileCon)
-  
+
   #----- 2 ----#
   ### Design.con
   fileCon <- file(paste(DataWrite,"/design.con", sep=""))
@@ -277,7 +286,7 @@ for(t in 1:nstud){
              /NumContrasts	1
              /PPheights		1.000000e+00
              /RequiredEffect		5.034
-             
+
              /Matrix
              1.000000e+00
              ',fileCon)
@@ -289,7 +298,7 @@ for(t in 1:nstud){
     # Text to be written to the file
     cat('/NumWaves\t1
         /NumPoints\t',paste(nsub,sep=''),'
-        
+
         /Matrix
         ',rep("1\n",nsub),file=fileCon)
 
@@ -297,27 +306,27 @@ for(t in 1:nstud){
   ### COPE.nii
   GRCOPE4D <- nifti(img=array(COPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
   writeNIfTI(GRCOPE4D, filename = paste(DataWrite,'/GRCOPE',sep=''),gzipped=FALSE)
-  
+
   #----- 5 ----#
   ### VARCOPE.nii
   GRVARCOPE4D <- nifti(img=array(VARCOPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
   writeNIfTI(GRVARCOPE4D, filename = paste(DataWrite,'/GRVARCOPE',sep=''),gzipped=FALSE)
-  
+
   #----- 6 ----#
   ### mask.nii
   mask <- nifti(img=array(1, dim=c(DIM,nsub)), dim=c(DIM,nsub), datatype=2)
   writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
-  
+
   # FSL TIME!
   setwd(DataWrite)
   command <- paste(fslpath, 'flameo --cope=GRCOPE --vc=GRVARCOPE --mask=mask --ld=study',t,'_stats --dm=design.mat --cs=design.grp --tc=design.con --runmode=flame1', sep='')
   Sys.setenv(FSLOUTPUTTYPE="NIFTI")
   system(command)
-  
+
   # Put the result of pooling subjects in a vector for the COPE and VARCOPE
   STCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
   STVARCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-  
+
   ## WE WILL NEED TO HAVE THE ES WITH ITS VARIANCE FOR THE FIRST APPROACH:
   # Load in T-map
   STMAP <- readNIfTI(paste(DataWrite,"/study",t,"_stats/tstat1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
@@ -330,7 +339,7 @@ for(t in 1:nstud){
   # Now put in a vector
   STHEDGE[,t] <- HedgeG
   STWEIGHTS[,t] <- weigFix
-  
+
   # Clean up objects
   rm(GRCOPE4D,GRVARCOPE4D,command,weigFix,HedgeG,STMAP)
 }
@@ -375,7 +384,7 @@ fileCon <- paste(DataWrite,"/STdesign.mat",sep="")
 cat('/NumWaves\t1
     /NumPoints\t',paste(nstud,sep=''),'
     /PPheights\t\t1.000000e+00
-    
+
     /Matrix
     ',rep("1.000000e+00\n",nstud),file=fileCon)
 
@@ -387,7 +396,7 @@ writeLines('/ContrastName1	Group Average
            /NumContrasts	1
            /PPheights		1.000000e+00
            /RequiredEffect		5.034
-           
+
            /Matrix
            1.000000e+00
            ',fileCon)
@@ -399,7 +408,7 @@ fileCon <- paste(DataWrite,"/STdesign.grp",sep="")
 # Text to be written to the file
 cat('/NumWaves\t1
     /NumPoints\t',paste(nstud,sep=''),'
-    
+
     /Matrix
     ',rep("1\n",nstud),file=fileCon)
 
@@ -460,10 +469,10 @@ save(ObjectsMAvsIBMA, file = paste(wd,'/Results/',K,'/SCEN_',SCEN,'/ObjectsMAvsI
 
 
 
-    
-    
-    
-    
+
+
+
+
 
 
 
