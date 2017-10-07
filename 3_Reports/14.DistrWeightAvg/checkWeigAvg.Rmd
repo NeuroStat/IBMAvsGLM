@@ -396,7 +396,7 @@ We will have $K = 20$. The amount of subjects in each study is equally spaced be
 This results in 36 combinations. For each combination, we calculate the true $t$-value for each study. Then we convert the true $t$-value to Hedges' $g$ per study. We can then calculate the true weighted average. However, as all studies have the same weights($W_k$): $(\sigma^2 + \tau^2)^{-1}$, the weighted average equals an unweighted average.
 
 We thus have:
-```{r 'true-values', eval = FALSE}
+```{r 'true-values', eval = FALSE, echo = FALSE}
 K <- 20
 N <- round(seq(10, 50, length.out = K), 0)
 TrueBeta <- 1.5
@@ -450,10 +450,6 @@ TrueWMean <- TrueValues %>% group_by(TrueBeta, TrueSigma, TrueTau) %>%
   summarise(wMean = wMean(Y = TrueG, W = TrueWeight),
             unwMean = mean(TrueG)) %>% ungroup()
 
-# print(tbl_df(data.frame('Sample size in study k' = N,
-#                  'True g' = TrueValues$TrueG)))
-# TrueWMean
-
 # Create plot 
 ToPlot_true <- data.frame('values' = c(TrueValues$TrueG, 
                           as.numeric(unlist(select(TrueWMean, wMean)))),
@@ -469,10 +465,12 @@ ggplot(ToPlot_true, aes(x = values, fill = type, colour = type)) +
   theme_bw()
 
 # Summary of true g
-filter(ToPlot_true, type == 'true_g') %>% select(values) %>% unlist() %>% as.numeric() %>% summary()
+filter(ToPlot_true, type == 'true_g') %>% select(values) %>% 
+  unlist() %>% as.numeric() %>% summary()
 
 # Summary of weighted average
-filter(ToPlot_true, type == 'true_wMean') %>% select(values) %>% unlist() %>% as.numeric() %>% summary()
+filter(ToPlot_true, type == 'true_wMean') %>% select(values) %>% 
+  unlist() %>% as.numeric() %>% summary()
 ```
 
 
