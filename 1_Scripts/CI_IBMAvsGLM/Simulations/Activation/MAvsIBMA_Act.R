@@ -15,9 +15,12 @@
 ###############
 ##
 
-# In this scenario, we will compare the outcome of transforming the second level
-# GLM to an ES and execute a meta-analsysis with the scenario in which you use a
-# third level GLM.
+# We compare the outcome of transforming the second level
+# GLM to an ES and calculate a weighted average using a random effects MA model.
+# This is compared with a third level GLM, mixed effects model.
+
+# Activation and between study heterogeneity is added.
+
 
 # MEASURES:
 #   * CI coverage
@@ -85,25 +88,46 @@ library(lattice)
 library(gridExtra)
 library(oro.nifti)
 library(ggplot2)
+library(tibble)
 library(reshape2)
 library(RColorBrewer)
 library(Hmisc)
 library(devtools)
 library(neuRosim)
+library(NeuRRoStat)
 
-# Load in functions from FixRan study: THIS HAS TO COME AFTER ALL
-# LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
-if(MACHINE == 'MAC'){
-  source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
-}
-if(MACHINE == 'HPC'){
-  source('/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA/functions.R')
-}
+# # Load in functions from FixRan study: THIS HAS TO COME AFTER ALL
+# # LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
+# if(MACHINE == 'MAC'){
+#   source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
+# }
+# if(MACHINE == 'HPC'){
+#   source('/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA/functions.R')
+# }
+
 
 
 ##
 ###############
-### Simulation steps
+### Functions
+###############
+##
+
+# Function to gather results into tibbles
+GetTibble <-function(data, sim, DIM, sigma, tau, nstud){
+  gather_data <- data.frame('sim' = sim,
+                            'voxel' = as.vector(1:prod(DIM)),
+                            'value' = matrix(data, ncol = 1),
+                            'parameter' = deparse(substitute(data)),
+                            'sigma' = sigma,
+                            'tau' = tau,
+                            'nstud' = nstud)
+  return(as.tibble(gather_data))
+}
+
+##
+###############
+### Simulation parameters
 ###############
 ##
 
@@ -125,12 +149,11 @@ on1 <- seq(1,total,40)
 onsets <- list(on1)
 duration <- list(20)
 
-# %BOLD change: fixed quantity
+# %BOLD change => fixed quantity
 #   We will change the amount of noise to change effect size, Cohen's d
-BOLDC <- 3
-
 # See MAvsIBMA_Act_true_values.R on how we obtained values for Cohen's d
 #   and the amount of noise within subjects to achieve these ES.
+BOLDC <- 3
 
 # Base of signal
 base <- 100
@@ -140,23 +163,34 @@ fwhm <- 8
 sigma <- fwhm/sqrt(8*log(2))
 width <- 5
 
-# Sigma of white noise: at the moment: median amount of noise
-whiteSigma <- 34.19913
-
-   # --> create function so we can change sigma
+# Number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
+nsub <- 29
 
 ##############################
-#### Scenario specific details
+#### Simulation parameters
 ##############################
 
-# At this moment: one amount of subjects and studies
-nsub <- 100
-nstud <- 5
+# Sigma of white noise: high, medium and low amount of noise
+whiteSigma_vec <- c(134.35372, 34.19913, 18.44071)
+
+# Vector of between study variability (need to define the values)
+Tau_vec <- whiteSigma_vec
+
+# Change number of studies in the MA. 
+# However, need to find more sensible values.
+nstud_vec <- seq(5, 50, by = 5)
 
 # At the moment, only consider one noise structure:
+    # White noise only
 Noise <- list(
   'S1' = c(1,0,0,0,0,0)
 )
+
+# Data frame with combinations 
+ParamComb <- expand.grid('whiteSigma' = whiteSigma_vec, 
+                         'tau' = Tau_vec, 
+                         'nstud' = nstud_vec)
+NumPar <- dim(ParamComb)[1]
 
 ###################################
 #### Subject/Study specific details
@@ -165,34 +199,30 @@ Noise <- list(
 TrueLocations <- c(5,5,5)
 TrueWhiteNoise <- Noise[1]						# MIND THE INDEX HERE!
 TrueRadius <- 1
-COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
-
-#####################
-#### Study parameters
-#####################
-STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM),nstud))
 
 ###########################
 ###### GROUND TRUTH #######
 ###########################
 
 # We generate a temporary design for getting a true signal
-truthdesign <- simprepTemporal(1,1,onsets=1,effectsize = 1, durations=1, TR=1, acc=0.1)
+truthdesign <- simprepTemporal(1, 1, onsets = 1, effectsize = 1, 
+                               durations = 1, TR = 1, acc = 0.1)
 
 # Now use this to get a sphere shaped area
-area <- simprepSpatial(regions=1, coord=list(TrueLocations), radius=ext, form="sphere", fading=0)
-truth <- simVOLfmri(design=truthdesign, image=area, dim=DIM, SNR=1,noise="none")[,,,1]
+area <- simprepSpatial(regions = 1, coord = list(TrueLocations), 
+                       radius = ext, form = "sphere", fading = 0)
+truth <- simVOLfmri(design = truthdesign, image = area, 
+                    dim = DIM, SNR = 1, noise = "none")[,,,1]
 GroundTruth <- ifelse(truth > 0, 1, 0)
-
-#save(GroundTruth, file = '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/GroundTruth_Act.Rda')
 
 #######################################
 #### DESIGN AND SIGNAL TIME SERIES ####
 #######################################
 
 # Generating a design matrix
-X <- simprepTemporal(total,1,onsets=onsets,effectsize = 1, durations=duration,
-                     TR = TR, acc=0.1, hrf="double-gamma")
+X <- simprepTemporal(total,1,onsets = onsets,
+                     effectsize = 1, durations = duration,
+                     TR = TR, acc = 0.1, hrf = "double-gamma")
 
 # Generate time series for ONE active voxel: predicted signal, this is the design
 pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
@@ -200,10 +230,10 @@ pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
 # Now we create the BOLD signal by converting to % BOLD signal changes
 # Need to be in appropriate scale
 signal_BOLDC <- BOLDC * (pred-base) + base
- # plot(design, type = 'l')
 
 # Smooth the GT and put it into the map
-SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
+SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim, 
+                      ksize = width, sigma = diag(sigma,3))
 
 # Now get the smoothed (raw) signal
 Rawsignal <- SmGT %o% signal_BOLDC
@@ -218,240 +248,292 @@ MaskGT[SmGT != 0] <- 1
 #### GENERATE DATA
 ##################
 
-# For loop over studies
-for(t in 1:nstud){
+# For loop over the data generating parameters
+for(p in 1:NumPar){
+  
+  # Select studies, amount of white noise and between-study variability
+  whiteSigma <- ParamComb[p, 'whiteSigma']
+  tau <- ParamComb[p, 'tau']
+  nstud <- ParamComb[p, 'nstud']
+
+  # Empty vectors
+  COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
+  STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM),nstud))
+
+  # For loop over studies
+  for(t in 1:nstud){
   print(paste('At study ', t, ', scenario ',SCEN, ' in simulation ', K, sep=''))
-  # For loop over nsub
-  for(s in 1:nsub){
-    # Make white noise
-    whiteNoise <- array(rnorm(n = (prod(DIM) * nscan), mean = 0,
-                              sd = whiteSigma), dim = c(DIM, nscan))
-
-    # And smooth
-    smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
-                                    ksize = width, sigma = diag(sigma,3))
-
-    # Create image for this subject
-    SubjData <- Rawsignal + smoothNoise
-    # plot(SubjData[5,5,5,], type = 'l')
-
-    # Transform it to correct dimension (Y = t x V)
-    Y.data <- t(matrix(SubjData,ncol=nscan))
-
+    
+    # Create the delta: subject specific true effect, using tau as between-study 
+    #   heterogeneity.
+    # Distributed with mean true signal and variance tau
+    StudData <- Rawsignal + array(
+                  array(rnorm(n = prod(DIM), mean = 0, sd = tau), 
+                    dim = DIM), dim = c(DIM, nscan))
+    # For loop over nsub
+    for(s in 1:nsub){
+      # Make white noise
+      whiteNoise <- array(rnorm(n = (prod(DIM) * nscan), mean = 0,
+                                sd = whiteSigma), dim = c(DIM, nscan))
+      # And smooth
+      smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
+                                      ksize = width, sigma = diag(sigma,3))
+      # Create image for this subject
+      SubjData <- StudData + smoothNoise
+      # plot(SubjData[5,5,5,], type = 'l')
+  
+      # Transform it to correct dimension (Y = t x V)
+      Y.data <- t(matrix(SubjData,ncol=nscan))
+  
+      ####************####
+      #### ANALYZE DATA: 1e level GLM
+      ####************####
+      # COPE (beta 1) --> fit GLM
+      model.lm <- lm(Y.data ~ pred)
+      b1 <- coef(model.lm)['pred',]
+      COPE[,s] <- b1
+  
+      # VARCOPE --> estimate residual (we need to extend the design matrix with an intercept)
+      xIN <- cbind(1,pred)
+      BETA <- coef(model.lm)
+      res <- (t(Y.data - xIN %*% BETA) %*% (Y.data - xIN %*% BETA))/(nscan - 2)
+      res <- diag(res)
+      # Contrast: not interested in intercept
+      CONTRAST <- matrix(c(0,1),nrow=1)
+      # Calculate varcope
+      VARCOPE[,s] <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST) %*% res
+  
+      # Clean objects
+      rm(model.lm, b1, xIN, BETA,res,CONTRAST)
+    }
+  
     ####************####
-    #### ANALYZE DATA: 1e level GLM
+    #### GROUP ANALYSIS: 2e level using FLAME
     ####************####
-    # COPE (beta 1) --> fit GLM
-    model.lm <- lm(Y.data ~ pred)
-    b1 <- coef(model.lm)['pred',]
-    COPE[,s] <- b1
+  
+    # Write auxiliarly files to DataWrite. We need:
+    # GRCOPE in nifti
+    # GRVARCOPE in nifti
+    # 4D mask
+    # design.mat file
+    # design.grp file
+    # design.con file
 
-    # VARCOPE --> estimate residual (we need to extend the design matrix with an intercept)
-    xIN <- cbind(1,pred)
-    BETA <- coef(model.lm)
-    res <- (t(Y.data - xIN %*% BETA) %*% (Y.data - xIN %*% BETA))/(nscan - 2)
-    res <- diag(res)
-    # Contrast: not interested in intercept
-    CONTRAST <- matrix(c(0,1),nrow=1)
-    # Calculate varcope
-    VARCOPE[,s] <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST) %*% res
+    #----- 1 ----#
+    ### Design.mat
+    fileCon <- paste(DataWrite,"/design.mat",sep="")
+    # Text to be written to the file
+    cat('/NumWaves\t1
+        /NumPoints\t',paste(nsub,sep=''),'
+        /PPheights\t\t1.000000e+00
+  
+        /Matrix
+        ',rep("1.000000e+00\n",nsub),file=fileCon)
+  
+    #----- 2 ----#
+    ### Design.con
+    fileCon <- file(paste(DataWrite,"/design.con", sep=""))
+    writeLines('/ContrastName1	Group Average
+               /NumWaves	1
+               /NumContrasts	1
+               /PPheights		1.000000e+00
+               /RequiredEffect		5.034
+  
+               /Matrix
+               1.000000e+00
+               ',fileCon)
+      close(fileCon)
 
-    # Clean objects
-    rm(model.lm, b1, xIN, BETA,res,CONTRAST)
+      #----- 3 ----#
+      ### Design.grp
+      fileCon <- paste(DataWrite,"/design.grp",sep="")
+      # Text to be written to the file
+      cat('/NumWaves\t1
+          /NumPoints\t',paste(nsub,sep=''),'
+  
+          /Matrix
+          ',rep("1\n",nsub),file=fileCon)
 
+    #----- 4 ----#
+    ### COPE.nii
+    GRCOPE4D <- nifti(img=array(COPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
+    writeNIfTI(GRCOPE4D, filename = paste(DataWrite,'/GRCOPE',sep=''),gzipped=FALSE)
+  
+    #----- 5 ----#
+    ### VARCOPE.nii
+    GRVARCOPE4D <- nifti(img=array(VARCOPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
+    writeNIfTI(GRVARCOPE4D, filename = paste(DataWrite,'/GRVARCOPE',sep=''),gzipped=FALSE)
+  
+    #----- 6 ----#
+    ### mask.nii
+    mask <- nifti(img=array(1, dim=c(DIM,nsub)), dim=c(DIM,nsub), datatype=2)
+    writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
+  
+    # FSL TIME!
+    setwd(DataWrite)
+    command <- paste(fslpath, 'flameo --cope=GRCOPE --vc=GRVARCOPE --mask=mask --ld=study',t,'_stats --dm=design.mat --cs=design.grp --tc=design.con --runmode=flame1', sep='')
+    Sys.setenv(FSLOUTPUTTYPE="NIFTI")
+    system(command)
+  
+    # Put the result of pooling subjects in a vector for the COPE and VARCOPE
+    STCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+    STVARCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+  
+    ## WE WILL NEED TO HAVE THE ES WITH ITS VARIANCE FOR THE FIRST APPROACH:
+    # Load in T-map
+    STMAP <- readNIfTI(paste(DataWrite,"/study",t,"_stats/tstat1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+    # Transform to an ES using hedgeG function, for each study
+    HedgeG <- apply(matrix(STMAP,ncol=1),1,FUN=hedgeG,N=nsub)
+    # Calculate variance of ES
+    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
+    # Weights of this study
+    weigFix <- 1/VarianceHedgeG
+    # Now put in a vector
+    STHEDGE[,t] <- HedgeG
+    STWEIGHTS[,t] <- weigFix
+  
+    # Clean up objects
+    rm(GRCOPE4D,GRVARCOPE4D,command,weigFix,HedgeG,STMAP)
   }
+  ########################################################################################################################################################################
+  ########################################################################################################################################################################
+
+  ####************####
+  #### META-ANALYSIS: classical approach
+  ####************####
+  
+  # Estimate between-study heterogeneity: DL estimator
+    # Need to make lists of Hedge g and the weights for using mapply
+    # Reason is that I combine matrices and per row I need Hedge g and weights
+    # in a function. 
+  STWEIGHTSL <- as.list(as.data.frame(t(STWEIGHTS)))
+  STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
+  EstTau <- array(as.vector(mapply(tau,Y = STHEDGEL,
+              W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
+  
+  # Random effect weights
+  STWEIGHTS_ran <- (1/STWEIGHTS) + array(EstTau, dim = c(prod(DIM), nstud))
+
+  # Calculate weighted average.
+  MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran),1,sum))/(apply(STWEIGHTS_ran,1,sum))
+
+  # CI for weighted average based on weighted variance CI
+  CI.MA.weightedVariance <- (apply((STWEIGHTS_ran*(STHEDGE - MA.WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(STWEIGHTS_ran,1,sum))
+  CI.MA.upper.weightVar <- matrix(MA.WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
+  CI.MA.lower.weightVar <- matrix(MA.WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
+
+  ########################################################################################################################################################################
+  ########################################################################################################################################################################
   
   ####************####
-  #### GROUP ANALYSIS: 2e level using FLAME
+  #### IBMA: 3e level using FLAME
   ####************####
 
   # Write auxiliarly files to DataWrite. We need:
-  # GRCOPE in nifti
-  # GRVARCOPE in nifti
+  # STCOPE in nifti
+  # STVARCOPE in nifti
   # 4D mask
   # design.mat file
   # design.grp file
   # design.con file
-
+  
   #----- 1 ----#
   ### Design.mat
-  fileCon <- paste(DataWrite,"/design.mat",sep="")
+  fileCon <- paste(DataWrite,"/STdesign.mat",sep="")
   # Text to be written to the file
   cat('/NumWaves\t1
-      /NumPoints\t',paste(nsub,sep=''),'
+      /NumPoints\t',paste(nstud,sep=''),'
       /PPheights\t\t1.000000e+00
-
+  
       /Matrix
-      ',rep("1.000000e+00\n",nsub),file=fileCon)
-
+      ',rep("1.000000e+00\n",nstud),file=fileCon)
+  
   #----- 2 ----#
   ### Design.con
-  fileCon <- file(paste(DataWrite,"/design.con", sep=""))
+  fileCon <- file(paste(DataWrite,"/STdesign.con", sep=""))
   writeLines('/ContrastName1	Group Average
              /NumWaves	1
              /NumContrasts	1
              /PPheights		1.000000e+00
              /RequiredEffect		5.034
-
+  
              /Matrix
              1.000000e+00
              ',fileCon)
-    close(fileCon)
-
-      #----- 3 ----#
-      ### Design.grp
-    fileCon <- paste(DataWrite,"/design.grp",sep="")
-    # Text to be written to the file
-    cat('/NumWaves\t1
-        /NumPoints\t',paste(nsub,sep=''),'
-
-        /Matrix
-        ',rep("1\n",nsub),file=fileCon)
-
+  close(fileCon)
+  
+  #----- 3 ----#
+  ### Design.grp
+  fileCon <- paste(DataWrite,"/STdesign.grp",sep="")
+  # Text to be written to the file
+  cat('/NumWaves\t1
+      /NumPoints\t',paste(nstud,sep=''),'
+  
+      /Matrix
+      ',rep("1\n",nstud),file=fileCon)
+  
   #----- 4 ----#
-  ### COPE.nii
-  GRCOPE4D <- nifti(img=array(COPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
-  writeNIfTI(GRCOPE4D, filename = paste(DataWrite,'/GRCOPE',sep=''),gzipped=FALSE)
-
+  ### STCOPE.nii
+  STCOPE4D <- nifti(img=array(STCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
+  writeNIfTI(STCOPE4D, filename = paste(DataWrite,'/STCOPE',sep=''),gzipped=FALSE)
+  
   #----- 5 ----#
   ### VARCOPE.nii
-  GRVARCOPE4D <- nifti(img=array(VARCOPE,dim=c(DIM,nsub)),dim=c(DIM,nsub),datatype = 16)
-  writeNIfTI(GRVARCOPE4D, filename = paste(DataWrite,'/GRVARCOPE',sep=''),gzipped=FALSE)
-
+  STVARCOPE4D <- nifti(img=array(STVARCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
+  writeNIfTI(STVARCOPE4D, filename = paste(DataWrite,'/STVARCOPE',sep=''),gzipped=FALSE)
+  
   #----- 6 ----#
   ### mask.nii
-  mask <- nifti(img=array(1, dim=c(DIM,nsub)), dim=c(DIM,nsub), datatype=2)
+  mask <- nifti(img=array(1, dim=c(DIM,nstud)), dim=c(DIM,nstud), datatype=2)
   writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
-
+  
   # FSL TIME!
   setwd(DataWrite)
-  command <- paste(fslpath, 'flameo --cope=GRCOPE --vc=GRVARCOPE --mask=mask --ld=study',t,'_stats --dm=design.mat --cs=design.grp --tc=design.con --runmode=flame1', sep='')
+  command <- paste(fslpath, 'flameo --cope=STCOPE --vc=STVARCOPE --mask=mask --ld=MA_stats --dm=STdesign.mat --cs=STdesign.grp --tc=STdesign.con --runmode=flame1', sep='')
   Sys.setenv(FSLOUTPUTTYPE="NIFTI")
   system(command)
+  
+  ### Now CI around COPE
+  IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
+  IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
+  # Degrees of freedom:
+  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[1,1,1]
+  
+  CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
+  CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
+  
+  ########################################################################################################################################################################
+  ########################################################################################################################################################################
 
-  # Put the result of pooling subjects in a vector for the COPE and VARCOPE
-  STCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-  STVARCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+  # Create data frame with all info
+  MAvsIBMAres <- data.frame()
+  data.frame('Value')
+  # Add info about the simulation parameters 
 
-  ## WE WILL NEED TO HAVE THE ES WITH ITS VARIANCE FOR THE FIRST APPROACH:
-  # Load in T-map
-  STMAP <- readNIfTI(paste(DataWrite,"/study",t,"_stats/tstat1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-  # Transform to an ES using hedgeG function, for each study
-  HedgeG <- apply(matrix(STMAP,ncol=1),1,FUN=hedgeG,N=nsub)
-  # Calculate variance of ES
-  VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
-  # Weights of this study
-  weigFix <- 1/VarianceHedgeG
-  # Now put in a vector
-  STHEDGE[,t] <- HedgeG
-  STWEIGHTS[,t] <- weigFix
+  GetTibble(MA.WeightedAvg, sim = K, DIM, sigma, tau, nstud)
+  GetTibble(STHEDGE, sim = K, DIM, sigma, tau, nstud)
+  
 
-  # Clean up objects
-  rm(GRCOPE4D,GRVARCOPE4D,command,weigFix,HedgeG,STMAP)
+  
+  
 }
-########################################################################################################################################################################
-########################################################################################################################################################################
 
-####************####
-#### META-ANALYSIS: classical approach
-####************####
+# Parameters that will be saved
+saveParam <- factor(levels = c('CI.MA.upper.weightVar', 'CI.MA.lower.weightVar',
+                       'MA.WeightedAvg',
+                       'CI.IBMA.upper.t','CI.IBMA.lower.t', 'IBMA.COPE',
+                       'CI.MA.weightedVariance', 'STHEDGE', 'ESTTAU',
+                       'STWEIGHTS', 'STWEIGHTS_ran'))
 
-# Note: at the moment, there is no between study variability.
-# Hence, we do not bother using the random effects MA (YET)!
+# Data frame with results:
+MAvsIBMAres <- tibble(sim = integer(),
+            voxel = numeric(),
+            value = numeric(),
+            parameter = saveParam,
+            sigma = numeric(),
+            tau = numeric(),
+            nstud = numeric()) 
 
-# Calculate weighted average.
-MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS),1,sum))/(apply(STWEIGHTS,1,sum))
-
-# CI for weighted average based on weighted variance CI
-CI.MA.weightedVariance <- (apply((STWEIGHTS*(STHEDGE - MA.WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(STWEIGHTS,1,sum))
-CI.MA.upper.weightVar <- matrix(MA.WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
-CI.MA.lower.weightVar <- matrix(MA.WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
-
-
-########################################################################################################################################################################
-########################################################################################################################################################################
-
-####************####
-#### IBMA: 3e level using FLAME
-####************####
-
-# Write auxiliarly files to DataWrite. We need:
-# STCOPE in nifti
-# STVARCOPE in nifti
-# 4D mask
-# design.mat file
-# design.grp file
-# design.con file
-
-#----- 1 ----#
-### Design.mat
-fileCon <- paste(DataWrite,"/STdesign.mat",sep="")
-# Text to be written to the file
-cat('/NumWaves\t1
-    /NumPoints\t',paste(nstud,sep=''),'
-    /PPheights\t\t1.000000e+00
-
-    /Matrix
-    ',rep("1.000000e+00\n",nstud),file=fileCon)
-
-#----- 2 ----#
-### Design.con
-fileCon <- file(paste(DataWrite,"/STdesign.con", sep=""))
-writeLines('/ContrastName1	Group Average
-           /NumWaves	1
-           /NumContrasts	1
-           /PPheights		1.000000e+00
-           /RequiredEffect		5.034
-
-           /Matrix
-           1.000000e+00
-           ',fileCon)
-close(fileCon)
-
-#----- 3 ----#
-### Design.grp
-fileCon <- paste(DataWrite,"/STdesign.grp",sep="")
-# Text to be written to the file
-cat('/NumWaves\t1
-    /NumPoints\t',paste(nstud,sep=''),'
-
-    /Matrix
-    ',rep("1\n",nstud),file=fileCon)
-
-#----- 4 ----#
-### STCOPE.nii
-STCOPE4D <- nifti(img=array(STCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
-writeNIfTI(STCOPE4D, filename = paste(DataWrite,'/STCOPE',sep=''),gzipped=FALSE)
-
-#----- 5 ----#
-### VARCOPE.nii
-STVARCOPE4D <- nifti(img=array(STVARCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
-writeNIfTI(STVARCOPE4D, filename = paste(DataWrite,'/STVARCOPE',sep=''),gzipped=FALSE)
-
-#----- 6 ----#
-### mask.nii
-mask <- nifti(img=array(1, dim=c(DIM,nstud)), dim=c(DIM,nstud), datatype=2)
-writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
-
-
-# FSL TIME!
-setwd(DataWrite)
-command <- paste(fslpath, 'flameo --cope=STCOPE --vc=STVARCOPE --mask=mask --ld=MA_stats --dm=STdesign.mat --cs=STdesign.grp --tc=STdesign.con --runmode=flame1', sep='')
-Sys.setenv(FSLOUTPUTTYPE="NIFTI")
-system(command)
-
-
-### Now CI around COPE
-IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
-IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
-# Degrees of freedom:
-tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[1,1,1]
-
-CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
-CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
-
-########################################################################################################################################################################
-########################################################################################################################################################################
 
 
 
@@ -484,3 +566,34 @@ save(ObjectsMAvsIBMA, file = paste(wd,'/Results/',K,'/SCEN_',SCEN,'/ObjectsMAvsI
 
 
 
+
+
+tau
+NeuRRoStat::tau
+checkthis <- apply(STHEDGE, 1, NeuRRoStat::tau, W = STWEIGHTS, k = nstud)
+C <- apply(STWEIGHTS, 1, function(W){sum(W)-(sum(W^2)/sum(W))})
+df <- 4
+
+a <- STWEIGHTS*STHEDGE^2
+b<- apply(a, 1, sum)
+d <- STWEIGHTS*STHEDGE
+e <- apply(d, 1, sum)
+f <- e^2
+Q <- b - f/ apply(STWEIGHTS, 1, sum)
+summary(Q)
+T2 <- Q
+T2[Q < df] <- 0
+T2[Q >= df] <- (Q[Q >= df]-df)/C[Q >= df]
+
+dim(STWEIGHTS)
+dim(STHEDGE)
+
+NeuRRoStat::tau(Y = STHEDGE[726,], W = STWEIGHTS[726,], k = nstud)
+NeuRRoStat::tau(STHEDGE, STWEIGHTS, nstud)
+length(mapply(NeuRRoStat::tau, Y = STHEDGE, W = STWEIGHTS, k = nstud))
+
+# Calculate the between subject variance: tau.
+HeGL <- as.list(as.data.frame(t(brain)))
+weigFixL <- as.list(as.data.frame(t(weigFix)))
+K <- length(N.S)
+VarBS <- as.vector(mapply(tau,Y=HeGL,W=weigFixL,k=K))
