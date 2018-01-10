@@ -1,0 +1,19 @@
+
+/usr/local/fsl/bin/fslmaths mask.nii.gz -div 1.000000  /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mask
+
+/usr/local/fsl/bin/fslmaths filtered_func_data -mul /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mask /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/tmpts
+
+/usr/local/fsl/bin/fslmeants -i /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/tmpts -o /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mean_mask_ts.txt -m /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mask
+
+/usr/local/fsl/bin/fslmaths stats/cope1 -mul 128.05834375 -div mean_func /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/tmp
+
+/usr/local/fsl/bin/imcp /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mask /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/tmpmask
+
+echo 44 81 24 | /usr/local/fsl/bin/img2stdcoord -img example_func -std example_func -vox -
+2  36  -24
+
+/usr/local/fsl/bin/fslmeants -i filtered_func_data -o /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/max_cope1_ts.txt -c 44 81 24
+
+/bin/rm /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/tmp*
+
+/usr/local/fsl/bin/slicesmask mean_func /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mask /Volumes/2_TB_WD_Elements_10B8_Han/PhD/HCP/Mixed_Effects.gfeat/25_32.gfeat/cope1.feat/featquery/mask.png

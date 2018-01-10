@@ -17,22 +17,23 @@ RObjects
 ehthumbs.db
 Thumbs.db
 workflow.sublime-workspace
+.sync-config.cson
 
 # Larger files associated with RMarkdown and knitr cache
 /*_cache/
 /cache/
 /*_files/
 /files/
-
-# Older reports
-3_Reports/01_18_16
-3_Reports/01_25_16
-3_Reports/02_01_16
-3_Reports/02_15_16
-3_Reports/02_22_16
-3_Reports/03_01_16
 3_Reports/**/*_files/
 3_Reports/**/*_cache/
-3_Reports/03_16_16/InvestigationIBMAvsGLM/custom.css
+
+# Older reports
+3_Reports/01.01_18_16
+3_Reports/02.01_25_16
+3_Reports/03.02_01_16
+3_Reports/04.02_15_16
+3_Reports/05.02_22_16
+3_Reports/06.03_01_16
+3_Reports/07.03_16_16/InvestigationIBMAvsGLM/custom.css
 3_Reports/next
 

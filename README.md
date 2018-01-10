@@ -20,6 +20,7 @@ The idea is to use fMRI null data to calculate the properties mentioned above. I
 
 * Simulations in R
 * Resting state fMRI data from the 1000 functional connectome project (as in Eklund et al., 2016)
+* Resting state fMRI data from the 1000 functional connectomes project (as in Eklund et al., 2016)
 * Possibly an approach provided by Slotnick (2017) in which task based fMRI data is taken. But odd trials are contrasted with even trials from the same task. This creates a null data situation as well.
 
 The reason for this extended approach is to provide as much validation as possible. Each method has its advantages and disadvantages.
