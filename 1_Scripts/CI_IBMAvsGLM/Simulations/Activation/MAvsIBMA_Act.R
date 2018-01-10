@@ -79,7 +79,6 @@ if(MACHINE=='MAC'){
   DataWrite <- '~/Desktop/IBMA2'
 }
 
-
 # Load in libraries
 library(AnalyzeFMRI)
 library(lattice)
@@ -126,18 +125,25 @@ on1 <- seq(1,total,40)
 onsets <- list(on1)
 duration <- list(20)
 
-# Effect size
-es1 <- 0.01
+# %BOLD change: fixed quantity
+#   We will change the amount of noise to change effect size, Cohen's d
+BOLDC <- 3
+
+# See MAvsIBMA_Act_true_values.R on how we obtained values for Cohen's d
+#   and the amount of noise within subjects to achieve these ES.
+
+# Base of signal
 base <- 100
-actes1 <- es1*base
 
 # Spatial smoothing of signal
 fwhm <- 8
 sigma <- fwhm/sqrt(8*log(2))
 width <- 5
 
-# Sigma of white noise
-whiteSigma <- 2
+# Sigma of white noise: at the moment: median amount of noise
+whiteSigma <- 34.19913
+
+   # --> create function so we can change sigma
 
 ##############################
 #### Scenario specific details
@@ -146,13 +152,6 @@ whiteSigma <- 2
 # At this moment: one amount of subjects and studies
 nsub <- 100
 nstud <- 5
-
-# True t-value at group level: 
-# trueBetaSignal = 0.01
-# Var(Beta_subj) = whiteSigma^2 / (sum(X - mean(X))^2)
-# Var(Beta_stud) = Var(Beta_subj) / n
-# T = trueBeta / sqrt(Var(Beta_stud))
-0.01/sqrt((whiteSigma^2/(var(pred) * (nscan-1))) / nsub)
 
 # At the moment, only consider one noise structure:
 Noise <- list(
@@ -163,7 +162,7 @@ Noise <- list(
 #### Subject/Study specific details
 ###################################
 # Subject parameters
-TrueLocations <- c(4,4,5)
+TrueLocations <- c(5,5,5)
 TrueWhiteNoise <- Noise[1]						# MIND THE INDEX HERE!
 TrueRadius <- 1
 COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
@@ -181,9 +180,10 @@ STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM),nstud))
 truthdesign <- simprepTemporal(1,1,onsets=1,effectsize = 1, durations=1, TR=1, acc=0.1)
 
 # Now use this to get a sphere shaped area
-area1 <- simprepSpatial(regions=1, coord=list(TrueLocations), radius=ext, form="sphere", fading=0)
-truth1 <- simVOLfmri(design=truthdesign, image=area1, dim=DIM, SNR=1,noise="none")[,,,1]
-GroundTruth <- ifelse(truth1 > 0, 1, 0)
+area <- simprepSpatial(regions=1, coord=list(TrueLocations), radius=ext, form="sphere", fading=0)
+truth <- simVOLfmri(design=truthdesign, image=area, dim=DIM, SNR=1,noise="none")[,,,1]
+GroundTruth <- ifelse(truth > 0, 1, 0)
+
 #save(GroundTruth, file = '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/GroundTruth_Act.Rda')
 
 #######################################
@@ -191,22 +191,28 @@ GroundTruth <- ifelse(truth1 > 0, 1, 0)
 #######################################
 
 # Generating a design matrix
-X <- simprepTemporal(total,1,onsets=onsets,effectsize = 100, durations=duration,
+X <- simprepTemporal(total,1,onsets=onsets,effectsize = 1, durations=duration,
                      TR = TR, acc=0.1, hrf="double-gamma")
 
-# Generate time series for ONE active voxel: predicted signal
+# Generate time series for ONE active voxel: predicted signal, this is the design
 pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
 
-# Now we can convert to % BOLD signal changes
-design1 <- es1 * (pred-base) + base
+# Now we create the BOLD signal by converting to % BOLD signal changes
+# Need to be in appropriate scale
+signal_BOLDC <- BOLDC * (pred-base) + base
+ # plot(design, type = 'l')
 
 # Smooth the GT and put it into the map
-SmGT1 <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
-SmoothGT <- SmGT1
+SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim ,ksize = width, sigma = diag(sigma,3))
 
-# Now get the smoothed signal
-Rawsignal1 <- SmGT1 %o% design1
-Rawsignal <- Rawsignal1
+# Now get the smoothed (raw) signal
+Rawsignal <- SmGT %o% signal_BOLDC
+
+# Create the ground truth mask (where is the true signal)
+MaskGT <- SmGT
+MaskGT[SmGT == 0] <- 0
+MaskGT[SmGT != 0] <- 1
+
 
 ##################
 #### GENERATE DATA
@@ -222,12 +228,12 @@ for(t in 1:nstud){
                               sd = whiteSigma), dim = c(DIM, nscan))
 
     # And smooth
-    #smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
-    #                                ksize = width, sigma = diag(sigma,3))
-    smoothNoise <- whiteNoise
+    smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
+                                    ksize = width, sigma = diag(sigma,3))
 
     # Create image for this subject
     SubjData <- Rawsignal + smoothNoise
+    # plot(SubjData[5,5,5,], type = 'l')
 
     # Transform it to correct dimension (Y = t x V)
     Y.data <- t(matrix(SubjData,ncol=nscan))
@@ -254,7 +260,7 @@ for(t in 1:nstud){
     rm(model.lm, b1, xIN, BETA,res,CONTRAST)
 
   }
-  summary(lm(COPE[355,] ~ 1))
+  
   ####************####
   #### GROUP ANALYSIS: 2e level using FLAME
   ####************####
