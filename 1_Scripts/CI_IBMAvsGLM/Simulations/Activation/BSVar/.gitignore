@@ -1,0 +1,5 @@
+# Data folder is too large and should not end up in repository
+Data/
+
+# Papers folder not on Github either
+Papers/
