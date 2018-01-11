@@ -53,21 +53,21 @@ input <- commandArgs(TRUE)
       K <- 1
       SCEN <- 1
     }
-  # DataWrite directory: where all files are written to
+  # DataWrite directory: where all temp FSL files are written to
   DataWrite <- try(as.character(input)[4],silent=TRUE)
 
-# Set starting seed: it is the product of the amount of voxels, the number of studies and the number of subjects!
+# Set starting seed: it is the product of the amount of voxels, 
+  # the number of studies and the number of subjects!
 starting.seed <- 36865*K
 set.seed(starting.seed)
 
-# Set WD
+# Set WD: this is location where results are written
 if(MACHINE=='HPC'){
   wd <- '/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA'
 }
 if(MACHINE=='MAC'){
   wd <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA'
 }
-setwd(wd)
 
 # Give path to FSL
 if(MACHINE=='HPC'){
@@ -88,6 +88,7 @@ library(lattice)
 library(gridExtra)
 library(oro.nifti)
 library(ggplot2)
+library(dplyr)
 library(tibble)
 library(reshape2)
 library(RColorBrewer)
@@ -96,16 +97,21 @@ library(devtools)
 library(neuRosim)
 library(NeuRRoStat)
 
-# # Load in functions from FixRan study: THIS HAS TO COME AFTER ALL
-# # LIBRARIES ARE LOADED AS WE SOMETIMES FIX FUNCTIONS THAT ARE BUGGED IN THE PACKAGES
-# if(MACHINE == 'MAC'){
-#   source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
-# }
-# if(MACHINE == 'HPC'){
-#   source('/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA/functions.R')
-# }
+# Parameters that will be saved
+saveParam <- factor(levels = c('CI.MA.upper.weightVar', 'CI.MA.lower.weightVar',
+                 'MA.WeightedAvg',
+                 'CI.IBMA.upper.t','CI.IBMA.lower.t', 'IBMA.COPE',
+                 'CI.MA.weightedVariance', 'STHEDGE', 'ESTTAU',
+                 'STWEIGHTS', 'STWEIGHTS_ran'))
 
-
+# Data frame with results:
+MAvsIBMAres <- tibble(sim = integer(),
+                voxel = integer(),
+                value = numeric(),
+                parameter = saveParam,
+                sigma = numeric(),
+                tau = numeric(),
+                nstud = numeric()) 
 
 ##
 ###############
@@ -114,11 +120,12 @@ library(NeuRRoStat)
 ##
 
 # Function to gather results into tibbles
-GetTibble <-function(data, sim, DIM, sigma, tau, nstud){
-  gather_data <- data.frame('sim' = sim,
+GetTibble <-function(data, nameParam, sim, DIM, sigma, tau, nstud){
+  gather_data <- data.frame('sim' = as.integer(sim),
                             'voxel' = as.vector(1:prod(DIM)),
                             'value' = matrix(data, ncol = 1),
-                            'parameter' = deparse(substitute(data)),
+                            'parameter' = factor(nameParam, 
+                                                 levels = levels(saveParam)),
                             'sigma' = sigma,
                             'tau' = tau,
                             'nstud' = nstud)
@@ -250,6 +257,7 @@ MaskGT[SmGT != 0] <- 1
 
 # For loop over the data generating parameters
 for(p in 1:NumPar){
+  print(paste('At parameter ', p, ' in simulation ', K, sep=''))
   
   # Select studies, amount of white noise and between-study variability
   whiteSigma <- ParamComb[p, 'whiteSigma']
@@ -262,7 +270,7 @@ for(p in 1:NumPar){
 
   # For loop over studies
   for(t in 1:nstud){
-  print(paste('At study ', t, ', scenario ',SCEN, ' in simulation ', K, sep=''))
+  print(paste('At study ', t, ', parameter ', p, ' in simulation ', K, sep=''))
     
     # Create the delta: subject specific true effect, using tau as between-study 
     #   heterogeneity.
@@ -408,11 +416,11 @@ for(p in 1:NumPar){
     # in a function. 
   STWEIGHTSL <- as.list(as.data.frame(t(STWEIGHTS)))
   STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
-  EstTau <- array(as.vector(mapply(tau,Y = STHEDGEL,
+  ESTTAU <- array(as.vector(mapply(tau,Y = STHEDGEL,
               W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
   
   # Random effect weights
-  STWEIGHTS_ran <- (1/STWEIGHTS) + array(EstTau, dim = c(prod(DIM), nstud))
+  STWEIGHTS_ran <- (1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud))
 
   # Calculate weighted average.
   MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran),1,sum))/(apply(STWEIGHTS_ran,1,sum))
@@ -505,55 +513,32 @@ for(p in 1:NumPar){
   ########################################################################################################################################################################
   ########################################################################################################################################################################
 
-  # Create data frame with all info
-  MAvsIBMAres <- data.frame()
-  data.frame('Value')
-  # Add info about the simulation parameters 
-
-  GetTibble(MA.WeightedAvg, sim = K, DIM, sigma, tau, nstud)
-  GetTibble(STHEDGE, sim = K, DIM, sigma, tau, nstud)
+  # Remove objects in DataWrite folder
+  command <- paste0('rm -r ', DataWrite, '/*')
+  system(command)
   
-
+  ########################################################################################################################################################################
+  ########################################################################################################################################################################
   
-  
+  # Create data frame with all info through looping over the factor with all 
+  #  parameters and bind to tibble. 
+  for(j in 1:length(levels(saveParam))){
+    tmpObject <- get(levels(saveParam)[j])
+    nameObject <- levels(saveParam)[j]
+    MAvsIBMAres <- GetTibble(tmpObject, nameObject,  
+                             sim = K, DIM, sigma, tau, nstud) %>%
+      bind_rows(MAvsIBMAres, .)
+  }
 }
 
-# Parameters that will be saved
-saveParam <- factor(levels = c('CI.MA.upper.weightVar', 'CI.MA.lower.weightVar',
-                       'MA.WeightedAvg',
-                       'CI.IBMA.upper.t','CI.IBMA.lower.t', 'IBMA.COPE',
-                       'CI.MA.weightedVariance', 'STHEDGE', 'ESTTAU',
-                       'STWEIGHTS', 'STWEIGHTS_ran'))
-
-# Data frame with results:
-MAvsIBMAres <- tibble(sim = integer(),
-            voxel = numeric(),
-            value = numeric(),
-            parameter = saveParam,
-            sigma = numeric(),
-            tau = numeric(),
-            nstud = numeric()) 
-
-
-
 
 ##
 ###############
-### Save objects
+### Save object
 ###############
 ##
-ObjectsMAvsIBMA <- list(
-  'CI.MA.upper.weightVar' = CI.MA.upper.weightVar,
-  'CI.MA.lower.weightVar' = CI.MA.lower.weightVar,
-  'MA.WeightedAvg' = MA.WeightedAvg,
-  'CI.IBMA.upper.t' = CI.IBMA.upper.t,
-  'CI.IBMA.lower.t' = CI.IBMA.lower.t,
-  'IBMA.COPE' = IBMA.COPE,
-  'CI.MA.weightedVariance' = CI.MA.weightedVariance,
-  'STHEDGE' = STHEDGE,
-  'STWEIGHTS' = STWEIGHTS
-)
-save(ObjectsMAvsIBMA, file = paste(wd,'/Results/',K,'/SCEN_',SCEN,'/ObjectsMAvsIBMA_',K,sep=''))
+saveRDS(MAvsIBMAres, file = paste(wd,'/Results/ActMAvsIBMA_',K,sep=''),
+        compress = TRUE)
 
 
 
@@ -564,36 +549,3 @@ save(ObjectsMAvsIBMA, file = paste(wd,'/Results/',K,'/SCEN_',SCEN,'/ObjectsMAvsI
 
 
 
-
-
-
-
-tau
-NeuRRoStat::tau
-checkthis <- apply(STHEDGE, 1, NeuRRoStat::tau, W = STWEIGHTS, k = nstud)
-C <- apply(STWEIGHTS, 1, function(W){sum(W)-(sum(W^2)/sum(W))})
-df <- 4
-
-a <- STWEIGHTS*STHEDGE^2
-b<- apply(a, 1, sum)
-d <- STWEIGHTS*STHEDGE
-e <- apply(d, 1, sum)
-f <- e^2
-Q <- b - f/ apply(STWEIGHTS, 1, sum)
-summary(Q)
-T2 <- Q
-T2[Q < df] <- 0
-T2[Q >= df] <- (Q[Q >= df]-df)/C[Q >= df]
-
-dim(STWEIGHTS)
-dim(STHEDGE)
-
-NeuRRoStat::tau(Y = STHEDGE[726,], W = STWEIGHTS[726,], k = nstud)
-NeuRRoStat::tau(STHEDGE, STWEIGHTS, nstud)
-length(mapply(NeuRRoStat::tau, Y = STHEDGE, W = STWEIGHTS, k = nstud))
-
-# Calculate the between subject variance: tau.
-HeGL <- as.list(as.data.frame(t(brain)))
-weigFixL <- as.list(as.data.frame(t(weigFix)))
-K <- length(N.S)
-VarBS <- as.vector(mapply(tau,Y=HeGL,W=weigFixL,k=K))
