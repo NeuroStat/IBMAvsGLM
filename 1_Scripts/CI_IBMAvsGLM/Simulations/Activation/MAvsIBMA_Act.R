@@ -537,7 +537,7 @@ for(p in 1:NumPar){
 ### Save object
 ###############
 ##
-saveRDS(MAvsIBMAres, file = paste(wd,'/Results/ActMAvsIBMA_',K,sep=''),
+saveRDS(MAvsIBMAres, file = paste(wd,'/Results/ActMAvsIBMA_',K,'.rda', sep=''),
         compress = TRUE)
 
 
