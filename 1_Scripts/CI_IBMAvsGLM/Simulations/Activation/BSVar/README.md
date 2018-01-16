@@ -18,18 +18,18 @@ The database contains the following studies:
 
 | Study        | Sample size           | Type  |  Contrast |
 | ------------- |:-------------|:-----:|:-----:|
-|Braboszcz 2017 | 17            | T-value | Painful images >Painless images (Normal state) |
-| Hebestreit 2017      | 23      |   T-value | Ammonia stimulation (trigeminal pain) > Air in both sessions (medication and placebo) |
+|Braboszcz 2017 | 17            | T-map | Painful images >Painless images (Normal state) |
+| Hebestreit 2017      | 23      |   T-map | Ammonia stimulation (trigeminal pain) > Air in both sessions (medication and placebo) |
 | Tamm 2017 | 86      |  T-map | Pain > no pain [no covariates] |
-| Karjalainen 2017 | 15      |  beta-map<sup>2</sup> | Main effect of vicarious pain |
+| Karjalainen 2017 | 35      |  T-map | Main effect of vicarious pain |
 | Atlas 2010 | 15      |  beta-map<sup>2</sup> | Thermal high vs low stimulation pain |
 | Wager 2013 | 15      |  beta-map<sup>2</sup> | Somatic pain vs baseline |
 | Kano 2017 | 15      |  beta-map<sup>2</sup> | Visceral pain vs baseline |
 | Rubio 2015 | 15      |  beta-map<sup>2</sup> | Visceral pain vs baseline |
 | Unpublished | 15      |  beta-map<sup>2</sup> | Mechanical high pressure pain vs baseline |
 | Unpublished | 15      |  beta-map<sup>2</sup> | Mechanical medium pressure pain vs baseline |
-| Patil 2017 | 46      |  T-value | Outcome of pain induced to others versus baseline |
-| Maumet 2016 | Total = 334<sup>3</sup>      |  T-value | Pain versus baseline |
+| Patil 2017 | 46      |  T-map | Outcome of pain induced to others versus baseline |
+| Maumet 2016 | Total = 334<sup>3</sup>      |  T-maps | Pain versus baseline |
 
 
 * Note that we only include studies doing whole-brain analyses.

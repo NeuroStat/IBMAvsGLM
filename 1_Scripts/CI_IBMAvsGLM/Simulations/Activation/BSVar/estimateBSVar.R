@@ -63,7 +63,7 @@ nstud <- 32
 database <- read.csv2('database.csv', header = TRUE, stringsAsFactors = FALSE)
 
 # Read in ROI mask 
-ROI <- readNIfTI('pain_pFgA_z_FDR_0.01_mask')[,,]
+ROI <- readNIfTI('pain_pFgA_z_FDR_0.01_forward_mask')[,,]
 # Dimension in 3D
 DIM3D <- dim(ROI)
 # Switch to array
@@ -177,6 +177,22 @@ ggplot(dataG, aes(y = study, x = hedgeG)) +
           subtitle = 'Sorted according to study sample size') +
   theme_ridges()
 
+# Plot for cover of PDF
+ggplot(dataG, aes(y = study, x = hedgeG)) +
+  geom_density_ridges2(aes(fill = samplesize), scale = 2) +
+  scale_y_discrete('Study', expand = c(0.01, 0)) +
+  scale_x_continuous("Hedges' g", expand = c(0.01, 0)) +
+  scale_fill_gradient2('Sample size', 
+                       low = '#3288bd',
+                       mid = '#ffffbf',
+                       high = '#d53e4f') +
+  guides(fill = 'none') +
+  theme_ridges() +
+  theme(text = element_text(size=10),
+        axis.text = element_text(size=10))
+  
+  # Alternatively, save object and plot through code chunk in document
+  saveRDS(dataG, file = 'Images/cover_data.rds')
 
 ##
 ###############
