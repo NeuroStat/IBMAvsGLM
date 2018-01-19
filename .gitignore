@@ -26,6 +26,8 @@ workflow.sublime-workspace
 /files/
 3_Reports/**/*_files/
 3_Reports/**/*_cache/
+1_Scripts/**/*_files/
+1_Scripts/**/*_cache/
 
 # Older reports
 3_Reports/01.01_18_16

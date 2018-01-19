@@ -7,8 +7,6 @@
 #### Notes:
 #################
 
-# tmp wd
-setwd("~/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/BSVar")
 
 ##
 ###############
