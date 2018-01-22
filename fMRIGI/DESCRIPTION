@@ -18,5 +18,6 @@ Imports:
     tidyr,
     mvmeta,
     NeuRRoStat,
+    neuRosim,
     stats
 RoxygenNote: 6.0.1
