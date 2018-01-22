@@ -35,7 +35,7 @@
 
 
 # Note: all actual parameters are generated in the fMRIGI package.
-# See:
+# See: https://github.com/NeuroStat/IBMAvsGLM/tree/master/fMRIGI/R/trueMCvalues.R
 
 ##
 ###############
