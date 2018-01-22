@@ -29,6 +29,8 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     # Number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
     nsub <- 29
 
+    # Number of studies: not backed by empirical data.
+    nstud <- seq(5, 50, by = 5)
 
     ###################
     #### Data characteristics

@@ -179,14 +179,15 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 ##############################
 
 # Sigma of white noise: high, medium and low amount of noise
-whiteSigma_vec <- c(134.35372, 34.19913, 18.44071)
+whiteSigma_vec <- trueMCvalues('sim_act', 'TrueSigma')
+
 
 # Vector of between study variability
-Tau_vec <- sqrt(c(0,0.10,0.495))
+Tau_vec <- trueMCvalues('sim_act', 'Tau')
 
 # Change number of studies in the MA.
 # However, need to find more sensible values.
-nstud_vec <- seq(5, 50, by = 5)
+nstud_vec <- trueMCvalues('sim_act', 'nstud')
 
 # At the moment, only consider one noise structure:
     # White noise only
@@ -204,13 +205,13 @@ NumPar <- dim(ParamComb)[1]
 #### Subject/Study specific details
 ###################################
 # Subject parameters
-TrueLocations <- c(5,5,5)
-TrueWhiteNoise <- Noise[1]						# MIND THE INDEX HERE!
-TrueRadius <- 1
+TrueLocations <- trueMCvalues('sim_act', 'TrueLocations')
 
 ###########################
 ###### GROUND TRUTH #######
 ###########################
+
+# NOTE: same code as the one from the R package fMRIGI!
 
 # We generate a temporary design for getting a true signal
 truthdesign <- simprepTemporal(1, 1, onsets = 1, effectsize = 1,
@@ -245,11 +246,6 @@ SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
 
 # Now get the smoothed (raw) signal
 Rawsignal <- SmGT %o% signal_BOLDC
-
-# Create the ground truth mask (where is the true signal)
-MaskGT <- SmGT
-MaskGT[SmGT == 0] <- 0
-MaskGT[SmGT != 0] <- 1
 
 
 ##################
