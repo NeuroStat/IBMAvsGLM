@@ -20,60 +20,19 @@
 # Blocked design for individual subjects.
 # One condition.
 # These N subjects are pooled using FLAME pooling
-# The resulting images are converted to either Hedges' g and pooled using fixed effects meta-analysis.
+# The resulting images are converted to either Hedges' g and pooled using random effects meta-analysis.
 # OR using 3e level GLM with again FLAME1.
 
+# Data contains activation and between-study heterogeneity
 
 
 ##
 ###############
-### Preparation
+### Functions
 ###############
 ##
 
-# Reset working directory
-rm(list=ls())
-gc(verbose = FALSE)
-
-# Date of today
-date <- Sys.Date()
-
-# Set starting seed
-set.seed(11121990)
-
-# Set WD
-wd <- "/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit"
-setwd(wd)
-
-# Directories of the data for different takes
-DATAwd <- list(
-  'Take[MAvsIBMA_Act]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results"
-)
-NUMDATAwd <- length(DATAwd)
-currentWD <- 1
-
-# Number of conficence intervals
-CIs <- c('MA-weightVar','GLM-t')
-NumCI <- length(CIs)
-
-# Number of executed simulations
-nsim.tmp <- matrix(c(
-  1,1000
-), ncol=2, byrow=TRUE)
-nsim <- nsim.tmp[currentWD,2]
-
-
-# Number of subjects and studies
-nsub <- 100
-nstud <- 5
-
-# Dimension of brain
-DIM.tmp <- array(NA, dim=c(NUMDATAwd,3))
-DIM.tmp[c(1),] <- c(9,9,9)
-DIM <- DIM.tmp[currentWD,]
-
-
-# Load in libraries
+# Libraries
 library(AnalyzeFMRI)
 library(lattice)
 library(grid)
@@ -86,6 +45,7 @@ library(Hmisc)
 library(devtools)
 library(neuRosim)
 library(scatterplot3d)
+library(NeuRRoStat)
 
 # Function for data wrangling: indicator for CI and true value
 indicating <- function(UPPER, LOWER, trueVal){
@@ -94,12 +54,56 @@ indicating <- function(UPPER, LOWER, trueVal){
   return(COVERAGE)
 }
 
-# Load in functions from FixRan study
-source('~/Dropbox/PhD/PhDWork/Meta\ Analysis/R\ Code/Studie_FixRan/FixRanStudyGit.git/Development/functions.R')
+
+##
+###############
+### Preparation
+###############
+##
+
+# Date of today
+date <- Sys.Date()
+
+# Set starting seed
+set.seed(1990)
+
+# Directories of the data for different simulations
+DATAwd <- list(
+  'Take[MAvsIBMA_Act]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters"
+)
+NUMDATAwd <- length(DATAwd)
+currentWD <- 1
+
+# Number of conficence intervals
+CIs <- c('MA-weightVar','GLM-t')
+NumCI <- length(CIs)
+
+# Data frame with number of simulations and subjects for current simulation
+info <- data.frame('Sim' = c(1),
+                   'nsim' = c(500),
+                   'nsub' = c(29))
+nsim <- info[currentWD,'nsim']
+nsub <- info[currentWD,'nsub']
+
+# Dimension of brain
+DIM <- c(9,9,9)
+
 
 ################
-#### TRUE VALUES: NEED TO RECREATE DESIGN MATRIX
+#### TRUE VALUES: load in R objects
 ################
+
+# True parameter values:
+readRDS()
+
+# Smoothed area
+readRDS()
+
+# Masked GT area
+readRDS()
+
+
+
 ## BETA 1 ##
 # Signal characteristics
 TR <- 2

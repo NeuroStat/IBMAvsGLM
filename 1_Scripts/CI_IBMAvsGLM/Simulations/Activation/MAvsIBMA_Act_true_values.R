@@ -15,6 +15,7 @@
 ##
 
 # Script to calculate the true values for the noise, effect sizes and weighted averages.
+# Also save spatial truth info (smoothed and masked GT area).
 
 # Note on calculating the noise (sigma squared of the model) of the time series:
 # --- Let us use 3 %BOLD change as a fixed quantity.
@@ -24,14 +25,17 @@
 # --- This is to obtain: d = average effect / sigma.
 # --- Sigma in this case corresponds to between subject variability, not the
 # ---   noise in a within-subject time series.
-# --- To get the latter, note that between subject variability corresponds to 
+# --- To get the latter, note that between subject variability corresponds to
 # ---   the variance of the first level beta.
 # --- In matrix notation, we have for the GLM:
 # ---   var(beta) = sigma^2 (X'X)^(-1)
 # --- Thus, we also need to calculate (X'X)^(-1), which depends on the design.
-# --- For this reason, we generate a design here. 
+# --- For this reason, we generate a design here.
 # --- This is a blocked design, in unity (peak = 1).
 
+
+# Note: all actual parameters are generated in the fMRIGI package.
+# See:
 
 ##
 ###############
@@ -50,8 +54,11 @@ library(RColorBrewer)
 library(Hmisc)
 library(devtools)
 library(neuRosim)
+library(NeuRRoStat)
+library(fMRIGI)
 
-
+# Number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
+nsub <- trueMCvalues('sim_act', 'nsub')
 
 ##
 ###############
@@ -60,36 +67,41 @@ library(neuRosim)
 ##
 
 ###################
-#### Generate design 
+#### Generate design
 ###################
 
 # Signal characteristics
-TR <- 2
-nscan <- 200
-total <- TR*nscan
-on1 <- seq(1,total,40)
-onsets <- list(on1)
-duration <- list(20)
+TR <- trueMCvalues(ID = 'sim_act', keyword = 'TR')
+nscan <- trueMCvalues('sim_act', 'nscan')
+total <- trueMCvalues('sim_act', 'total')
+on1 <- trueMCvalues('sim_act', 'on1')
+onsets <- trueMCvalues('sim_act', 'onsets')
+duration <- trueMCvalues('sim_act', 'duration')
+
+
+# Image characteristics
+DIM <- trueMCvalues('sim_act', 'DIM')
+voxdim <- trueMCvalues('sim_act', 'voxdim') # Voxelsize
+ext <- trueMCvalues('sim_act', 'ext')       #  Extend
+nregio <- trueMCvalues('sim_act', 'nregio')
 
 # True % BOLD CHANGE
-BOLDC <- 3
+BOLDC <- trueMCvalues('sim_act', 'BOLDC')
 
 # Generating a design matrix
-X <- simprepTemporal(total,1,onsets=onsets,effectsize = 1, durations=duration,
-                     TR = TR, acc=0.1, hrf="double-gamma")
+X <- trueMCvalues('sim_act', 'X')
 
 # Generate time series for ONE active voxel: predicted signal from design matrix
-pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
-# plot(pred, type = 'l')
+pred <- trueMCvalues('sim_act', 'pred')
 
 # Extend the design matrix with an intercept
-xIN <- cbind(1,pred)
+xIN <- trueMCvalues('sim_act', 'xIN')
 
 # Contrast: not interested in intercept
-CONTRAST <- matrix(c(0,1),nrow=1)
+CONTRAST <- trueMCvalues('sim_act', 'CONTRAST')
 
 # Calculate (X'X)^(-1) with contrast
-design_factor <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST)
+design_factor <- trueMCvalues('sim_act', 'design_factor')
 
 # Now we need sensible values for Cohen's d
 # We look at Poldrack et al. (2017).
@@ -100,11 +112,14 @@ design_factor <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST)
 # --- we take the median Cohen's d over several contrasts in fMRI as a medium effect (i.e. 0.55)
 # --- the 90% quantile as a high effect (1.02).
 # --- and 10% quantile for a low effect (0.14)
-TrueD <- c(0.14, 0.55, 1.02)
+TrueD <- trueMCvalues('sim_act', 'TrueD')
 
 # Calculate values for sigma
-TrueSigma <- BOLDC/(TrueD * as.vector(sqrt(design_factor)))
+TrueSigma <- trueMCvalues('sim_act', 'TrueSigma')
 
+# Tau: values come from estimateBSvar.R, no covariate
+  # 0th, 50th and 100th percentile of observed between-study variability
+Tau <- trueMCvalues('sim_act', 'Tau')
 
 ##
 ###############
@@ -113,10 +128,39 @@ TrueSigma <- BOLDC/(TrueD * as.vector(sqrt(design_factor)))
 ##
 
 # Hedges' g can be obtained by multiplying Cohen's d with the correction factor.
-# This depends on amount of subjects. I don't know the amount of subjects yet,
-# so I need to wait with this. 
+TrueG <- trueMCvalues('sim_act', 'TrueG')
 
 
+##
+###############
+### Smoothed and binary GT mask (spatial truth)
+###############
+##
+
+
+# True center of activation
+TrueLocations <- trueMCvalues('sim_act', 'TrueLocations')
+
+# Spatial smoothing of signal
+fwhm <- trueMCvalues('sim_act', 'fwhm')
+sigma <- trueMCvalues('sim_act', 'sigma')
+width <- trueMCvalues('sim_act', 'width')
+
+# We generate a temporary design for getting a true signal
+truthdesign <- trueMCvalues('sim_act', 'truthdesign')
+
+# Now use this to get a sphere shaped area
+area <- trueMCvalues('sim_act', 'area')
+truth <- trueMCvalues('sim_act', 'truth')
+
+# Unsmoothed ground truth
+GroundTruth <- trueMCvalues('sim_act', 'GroundTruth')
+
+# Smooth the GT and put it into the map
+SmGT <- trueMCvalues('sim_act', 'SmGT')
+
+# Create the smoothed ground truth mask (where is the true signal)
+MaskGT <- trueMCvalues('sim_act', 'MaskGT')
 
 ##
 ###############
@@ -124,8 +168,14 @@ TrueSigma <- BOLDC/(TrueD * as.vector(sqrt(design_factor)))
 ###############
 ##
 
-saveRDS(TrueSigma, file = 'TrueSigma.rda')
+# List with true parameter values
+SavedParam <- list(Nsub = nsub, TrueD = TrueD, TrueSigma = TrueSigma,
+               TrueG = TrueG, Tau =  Tau)
 
+# Saving this list, along with spatial truth (smoothed and mask)
+saveRDS(SavedParam, file = 'TrueValues.rda')
+saveRDS(SmGT, file = 'TrueSmoothedArea.rda')
+saveRDS(MaskGT, file = 'TrueMaskedArea.rda')
 
 
 
