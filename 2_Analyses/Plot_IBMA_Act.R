@@ -25,6 +25,8 @@
 
 # Data contains activation and between-study heterogeneity
 
+# Set wd to base Github tree (line needs to be removed when making repo public)
+setwd('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit')
 
 ##
 ###############
@@ -46,13 +48,7 @@ library(devtools)
 library(neuRosim)
 library(scatterplot3d)
 library(NeuRRoStat)
-
-# Function for data wrangling: indicator for CI and true value
-indicating <- function(UPPER, LOWER, trueVal){
-  IND <- trueVal >= LOWER & trueVal <= UPPER
-  COVERAGE <- apply(IND, 1, mean, na.rm=TRUE)
-  return(COVERAGE)
-}
+library(fMRIGI)
 
 
 ##
@@ -81,12 +77,12 @@ NumCI <- length(CIs)
 # Data frame with number of simulations and subjects for current simulation
 info <- data.frame('Sim' = c(1),
                    'nsim' = c(500),
-                   'nsub' = c(29))
+                   'nsub' = trueMCvalues('sim_act', 'nsub'))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
 
 # Dimension of brain
-DIM <- c(9,9,9)
+DIM <- trueMCvalues('sim_act', 'DIM')
 
 
 ################
@@ -94,24 +90,20 @@ DIM <- c(9,9,9)
 ################
 
 # True parameter values:
-readRDS()
+TrueParam <- readRDS(file = paste(getwd(), 
+             "/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/TrueValues.rda", sep = ""))
 
 # Smoothed area
-readRDS()
+SmGT <- readRDS(file = paste(getwd(), 
+        "/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/TrueSmoothedArea.rda", sep = ""))
 
 # Masked GT area
-readRDS()
+MaskGT <- readRDS(file = paste(getwd(), 
+          "/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/TrueMaskedArea.rda", sep = ""))
 
 
 
-## BETA 1 ##
-# Signal characteristics
-TR <- 2
-nscan <- 200
-total <- TR*nscan
-on1 <- seq(1,total,40)
-onsets <- list(on1)
-duration <- list(20)
+
 whiteSigma <- 7
 
 # Generating a design matrix
