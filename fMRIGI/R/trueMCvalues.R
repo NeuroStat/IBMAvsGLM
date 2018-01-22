@@ -69,11 +69,11 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     width <- 5
 
     # Generating a design matrix
-    X <- simprepTemporal(total,1,onsets=onsets,effectsize = 1, durations=duration,
+    X <- neuRosim::simprepTemporal(total,1,onsets=onsets,effectsize = 1, durations=duration,
                          TR = TR, acc=0.1, hrf="double-gamma")
 
     # Generate time series for ONE active voxel: predicted signal from design matrix
-    pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
+    pred <- neuRosim::simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
     # plot(pred, type = 'l')
 
     # Extend the design matrix with an intercept
@@ -108,7 +108,7 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     Tau <- sqrt(c(0,0.10,0.495))
 
     # Hedges' g can be obtained by multiplying Cohen's d with the correction factor.
-    TrueG <- TrueD * corrJ(N = nsub)
+    TrueG <- TrueD * NeuRRoStat::corrJ(N = nsub)
 
 
     ###################
@@ -119,12 +119,12 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     TrueLocations <- c(5,5,5)
 
     # We generate a temporary design for getting a true signal
-    truthdesign <- simprepTemporal(1, 1, onsets = 1, effectsize = 1,
+    truthdesign <- neuRosim::simprepTemporal(1, 1, onsets = 1, effectsize = 1,
                                    durations = 1, TR = 1, acc = 0.1)
     # Now use this to get a sphere shaped area
-    area <- simprepSpatial(regions = 1, coord = list(TrueLocations),
+    area <- neuRosim::simprepSpatial(regions = 1, coord = list(TrueLocations),
                            radius = ext, form = "sphere", fading = 0)
-    truth <- simVOLfmri(design = truthdesign, image = area,
+    truth <- neuRosim::simVOLfmri(design = truthdesign, image = area,
                         dim = DIM, SNR = 1, noise = "none")[,,,1]
     # Unsmoothed ground truth
     GroundTruth <- ifelse(truth > 0, 1, 0)

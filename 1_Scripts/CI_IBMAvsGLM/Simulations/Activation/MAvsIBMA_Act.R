@@ -523,7 +523,7 @@ for(p in 1:NumPar){
     tmpObject <- get(levels(saveParam)[j])
     nameObject <- levels(saveParam)[j]
     MAvsIBMAres <- GetTibble(tmpObject, nameObject,
-                             sim = K, DIM, sigma, tau, nstud) %>%
+                             sim = K, DIM, whiteSigma, tau, nstud) %>%
       bind_rows(MAvsIBMAres, .)
   }
 }

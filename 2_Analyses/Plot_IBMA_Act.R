@@ -35,12 +35,14 @@ setwd('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulat
 ##
 
 # Libraries
+library(ggplot2)
+library(tibble)
+library(dplyr)
 library(AnalyzeFMRI)
 library(lattice)
 library(grid)
 library(gridExtra)
 library(oro.nifti)
-library(ggplot2)
 library(reshape2)
 library(RColorBrewer)
 library(Hmisc)
@@ -81,6 +83,22 @@ info <- data.frame('Sim' = c(1),
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
 
+# Parameters that will be checked
+saveParam <- factor(levels = c('CI.MA.upper.weightVar', 'CI.MA.lower.weightVar',
+                   'MA.WeightedAvg',
+                   'CI.IBMA.upper.t','CI.IBMA.lower.t', 'IBMA.COPE',
+                   'CI.MA.weightedVariance', 'STHEDGE', 'ESTTAU',
+                   'STWEIGHTS', 'STWEIGHTS_ran'))
+
+# Data frame with results:
+MAvsIBMAres <- tibble(sim = integer(),
+                      voxel = integer(),
+                      value = numeric(),
+                      parameter = saveParam,
+                      sigma = numeric(),
+                      tau = numeric(),
+                      nstud = numeric())
+
 # Dimension of brain
 DIM <- trueMCvalues('sim_act', 'DIM')
 
@@ -96,69 +114,96 @@ TrueParam <- readRDS(file = paste(getwd(),
 # Smoothed area
 SmGT <- readRDS(file = paste(getwd(), 
         "/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/TrueSmoothedArea.rda", sep = ""))
+# Vector dimension
+SmGT_v <- data.frame(voxID = 1:prod(DIM),
+         Smooth = array(SmGT, dim = prod(DIM)))
 
 # Masked GT area
 MaskGT <- readRDS(file = paste(getwd(), 
           "/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/TrueMaskedArea.rda", sep = ""))
 
+# Data frame with combinations
+ParamComb <- expand.grid('TrueSigma' = TrueParam[['TrueSigma']],
+                         'Tau' = TrueParam[['Tau']],
+                         'nstud' = trueMCvalues('sim_act', 'nstud'))
+NumPar <- dim(ParamComb)[1]
+
+# Extend the true values with number of studies
+TrueP_S <- data.frame(TrueParam) %>% 
+  inner_join(.,ParamComb, by = c('TrueSigma', 'Tau'))
+
+# We will need to extend the true parameter values with the smoothed value 
+#     for each voxel.
+SmParam <- data.frame(voxID = rep(1:prod(DIM), each = length(TrueParam$TrueG))) %>% 
+  bind_cols(., 
+    # First replicate data frame for amount of voxels (use do.call rbind to do so)
+    # Then bind columns
+    do.call("rbind", replicate(prod(DIM), data.frame(TrueParam), 
+                      simplify = FALSE))) %>% as.tibble(.) %>%
+  select(-Nsub) %>%
+  # Join smoothed area vector to dataframe
+  left_join(., SmGT_v, by = 'voxID') %>%
+  # Multiply TrueG with Smoothed value to obtain smoothed Hedges' g
+  mutate(SmoothG = TrueG * Smooth)
+  
 
 
-
-whiteSigma <- 7
-
-# Generating a design matrix
-X <- simprepTemporal(total,1,onsets=onsets,effectsize = 100, durations=duration,
-                     TR = TR, acc=0.1, hrf="double-gamma")
-
-# Generate design
-pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
-
-# We know that: range(signal) = Beta_1 * range(X), so we solve for Beta_1 to get its true value.
-es1 <- 0.01
-base <- 100
-signal <- es1 * (pred-base) + base
-trueBeta1 <- (max(signal) - min(signal)) / (max(pred) - min(pred))
-
-## VAR(BETA1) ##
-# Variance of beta 1 = variance of beta 1 at subject level / N.
-# Variance of beta1_subj = whiteSigma^2/SSX
-sigma2_Beta1_subj <- whiteSigma^2 / (sum((pred - mean(pred))^2))
-sigma2_Beta1 <- sigma2_Beta1_subj / nsub
-## TVALUE ##
-trueTval <- trueBeta1 / sqrt(sigma2_Beta1)
-
-## HEDGES' G ##
-trueG <- hedgeG(t = trueTval, N = nsub)
-
-## LOCATION ##
-# True (unsmoothed) values (object called GroundTruth, created in MAvsIBMA_Act.R)
-load('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/GroundTruth_Act.Rda')
-
-# True values: either for Beta 1 or hedges' g
-GroundTruthCope <- GroundTruth
-GroundTruthCope[GroundTruth == 1] <- trueBeta1
-GroundTruthCope[GroundTruth == 0] <- NA
-GroundTruthES <- GroundTruth
-GroundTruthES[GroundTruth == 1] <- trueG
-GroundTruthES[GroundTruth == 0] <- NA
-TrueLocations <- c(4,4,5)
-
-
-cop <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-varc <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-
-dim(cop)
-array(apply(COPE, 1, mean), dim = DIM)[4,4,5]
-cop[4,4,5]
-array(apply(COPE, 1, t.test), dim = DIM)[4,4,5]
-array(apply(COPE, 1, var), dim = DIM)[4,4,5]
-
-varc[4,4,5]
-2.099544e-06 / nsub
-
-array(apply(COPE, 1, mean), dim = DIM)[4,4,5] /
-  sqrt(2.099544e-06 / nsub)
-STMAP[4,4,5]
+# 
+# whiteSigma <- 7
+# 
+# # Generating a design matrix
+# X <- simprepTemporal(total,1,onsets=onsets,effectsize = 100, durations=duration,
+#                      TR = TR, acc=0.1, hrf="double-gamma")
+# 
+# # Generate design
+# pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
+# 
+# # We know that: range(signal) = Beta_1 * range(X), so we solve for Beta_1 to get its true value.
+# es1 <- 0.01
+# base <- 100
+# signal <- es1 * (pred-base) + base
+# trueBeta1 <- (max(signal) - min(signal)) / (max(pred) - min(pred))
+# 
+# ## VAR(BETA1) ##
+# # Variance of beta 1 = variance of beta 1 at subject level / N.
+# # Variance of beta1_subj = whiteSigma^2/SSX
+# sigma2_Beta1_subj <- whiteSigma^2 / (sum((pred - mean(pred))^2))
+# sigma2_Beta1 <- sigma2_Beta1_subj / nsub
+# ## TVALUE ##
+# trueTval <- trueBeta1 / sqrt(sigma2_Beta1)
+# 
+# ## HEDGES' G ##
+# trueG <- hedgeG(t = trueTval, N = nsub)
+# 
+# ## LOCATION ##
+# # True (unsmoothed) values (object called GroundTruth, created in MAvsIBMA_Act.R)
+# load('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/GroundTruth_Act.Rda')
+# 
+# # True values: either for Beta 1 or hedges' g
+# GroundTruthCope <- GroundTruth
+# GroundTruthCope[GroundTruth == 1] <- trueBeta1
+# GroundTruthCope[GroundTruth == 0] <- NA
+# GroundTruthES <- GroundTruth
+# GroundTruthES[GroundTruth == 1] <- trueG
+# GroundTruthES[GroundTruth == 0] <- NA
+# TrueLocations <- c(4,4,5)
+# 
+# 
+# cop <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+# varc <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
+# 
+# dim(cop)
+# array(apply(COPE, 1, mean), dim = DIM)[4,4,5]
+# cop[4,4,5]
+# array(apply(COPE, 1, t.test), dim = DIM)[4,4,5]
+# array(apply(COPE, 1, var), dim = DIM)[4,4,5]
+# 
+# varc[4,4,5]
+# 2.099544e-06 / nsub
+# 
+# array(apply(COPE, 1, mean), dim = DIM)[4,4,5] /
+#   sqrt(2.099544e-06 / nsub)
+# STMAP[4,4,5]
 
 
 ##
@@ -171,10 +216,40 @@ STMAP[4,4,5]
 #### First load in all the data
 AllData <- c()
 # Load in the data
-for(i in 1:nsim){
-  load(paste(DATAwd[[currentWD]],'/',i,'/SCEN_1/ObjectsMAvsIBMA_',i,sep=''))
-  AllData <- c(AllData, matrix(unlist(ObjectsMAvsIBMA), ncol=1))
+for(i in 1:31){
+  if(i == 7) next
+  if(i == 11) next
+  if(i == 17) next
+  if(i == 19) next
+  if(i == 20) next
+  if(i == 24) next
+  MAvsIBMAres <- 
+  readRDS(paste(DATAwd[[currentWD]],'/Results/ActMAvsIBMA_',i, '.rda', sep='')) %>%
+    bind_rows(MAvsIBMAres, .)
 }
+
+for(i in 1:2){
+  MAvsIBMAres <-   
+    readRDS(paste0('/Users/hanbossier/Desktop/ActMAvsIBMA_',i,'.rda')) %>%
+    bind_rows(MAvsIBMAres,.)
+}
+
+test <- MAvsIBMAres
+
+MAvsIBMAres <- filter(MAvsIBMAres, sim == 1)
+summary(MAvsIBMAres$sim)
+
+filter(MAvsIBMAres, voxel == 365) %>% 
+  filter(parameter == 'MA.WeightedAvg') %>%
+  mutate(sigma = rep(trueMCvalues('sim_act', 'TrueG'), 3*10*25)) %>%
+  group_by(sigma, tau, nstud) %>% 
+  summarise(avgWA = mean(value)) %>% View()
+
+
+filter(MAvsIBMAres, voxel == 125) %>%
+  distinct() %>%
+  filter(parameter == 'MA.WeightedAvg')
+  
 # Make nsim number of columns
 AllData <- matrix(AllData,ncol=nsim)
 
@@ -193,6 +268,10 @@ dim(AllData)[1]==length(OBJ.ID)
 #########################################################
 ###################### CI COVERAGE ######################
 #########################################################
+
+MAvsIBMAres %>%
+filter(parameter == 'MA.WeightedAvg') %>%
+  mutate(sigma = rep(trueMCvalues('sim_act', 'TrueG'), 3*10*25)) %>%
 
 # Calculate coverage
 mean.coverage.weightVar.MA <- data.frame(UPPER = c(AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),]),
