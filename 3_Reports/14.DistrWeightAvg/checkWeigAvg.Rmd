@@ -243,7 +243,7 @@ ownVarG <- function(mu, sigma, N){
 
 In Hedges (1989), the variance of $g$ is calculated as:
 \begin{align} \label{varHedge}
-\text{Var}(g) & = \frac{1}{N} + \left[ 1 -  \left( \frac{\Gamma((N - 2) / 2)} {\Gamma((N - 1) / 2)} \right) ^{2} \times \frac{(N - 3)}{2} \right] \times g 
+\text{Var}(g) & = \frac{1}{N} + \left[ 1 -  \left( \frac{\Gamma((N - 2) / 2)} {\Gamma((N - 1) / 2)} \right) ^{2} \times \frac{(N - 3)}{2} \right] \times g^2
 \end{align}
 
 Using again $\mu = 1$, $\sigma = 2$ and $N = 50$, we calculate the true value of $g$.

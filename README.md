@@ -1,3 +1,7 @@
+# TO DO
+
+* Simulation of activation: might want to create one file where parameters are defined. Instead of having the same code copied into simultation, analysis and plotting.
+
 # Goal of the study
 When a researcher wants to combine data from individual fMRI data-analyses, then we consider two options (not exclusive):
  * Image based meta-analysis
