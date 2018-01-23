@@ -144,9 +144,66 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM), each = length(TrueParam$TrueG))) 
   # Join smoothed area vector to dataframe
   left_join(., SmGT_v, by = 'voxID') %>%
   # Multiply TrueG with Smoothed value to obtain smoothed Hedges' g
-  mutate(SmoothG = TrueG * Smooth)
+  mutate(SmoothG = TrueG * Smooth) %>%
+  # Drop tau
+  select(-Tau)
   
+# Data frame with estimate only (without the CI bounds)
+Estimate <- MAvsIBMAres %>%
+  filter(parameter %in% c('MA.WeightedAvg', 'IBMA.COPE')) %>%
+       left_join(., SmParam, by = c('voxel' = 'voxID',
+                                     'sigma' = 'TrueSigma'))
 
+# Adding the CI bounds. Seperated per method.
+MAwide <- MAvsIBMAres %>%
+  filter(parameter %in% c('CI.MA.upper.weightVar', 
+                          'CI.MA.lower.weightVar')) %>%
+  # Need to spread the data frame with two extra columns
+  tidyr::spread(., key = 'parameter', value = 'value') %>%
+  # Rename to later bind in one data frame
+  rename(., CI_upper = CI.MA.upper.weightVar,
+         CI_lower = CI.MA.lower.weightVar) %>%
+  # Add MA.WeightedAvg to dataframe
+  full_join(
+    filter(Estimate, parameter == 'MA.WeightedAvg'),
+    ., by = c("sim", "voxel", "sigma", "tau", "nstud"))
+
+# Repeat with GLM approach
+GLMwide <- MAvsIBMAres %>%
+  filter(parameter %in% c('CI.IBMA.upper.t',
+                          'CI.IBMA.lower.t')) %>%
+  tidyr::spread(., key = 'parameter', value = 'value') %>%
+  # Rename
+  rename(., CI_upper = CI.IBMA.upper.t,
+         CI_lower = CI.IBMA.lower.t) %>%
+  # Add MA.WeightedAvg to dataframe
+  full_join(
+    filter(Estimate, parameter == 'IBMA.COPE'),
+    ., by = c("sim", "voxel", "sigma", "tau", "nstud"))
+
+# Bind data frames
+ProcessedDat <- bind_rows(MAwide, GLMwide)
+
+# Filter
+filter(ProcessedDat, SmoothG != 0)
+
+# Add CI_coverage and summarise
+ProcessedDat %>% filter(SmoothG != 0) %>%
+  # True smoothed value within CI limits?
+  mutate(cov_IND = ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,
+         1, 0)) %>%
+  group_by(parameter, TrueD, tau, nstud) %>%
+  summarise(coverage = mean(cov_IND)) %>%
+  ggplot(., aes(x = nstud, y = coverage)) + 
+  geom_point(aes(colour = parameter, fill = parameter)) +
+  geom_line(aes(colour = parameter)) +
+  facet_wrap(TrueD ~ tau)
+
+
+filter(ProcessedDat, SmoothG == max(SmoothG))
+
+max(ProcessedDat$SmoothG)
+summary(Estimate$SmoothG)
 
 # 
 # whiteSigma <- 7
@@ -228,7 +285,7 @@ for(i in 1:31){
     bind_rows(MAvsIBMAres, .)
 }
 
-for(i in 1:2){
+for(i in 1:10){
   MAvsIBMAres <-   
     readRDS(paste0('/Users/hanbossier/Desktop/ActMAvsIBMA_',i,'.rda')) %>%
     bind_rows(MAvsIBMAres,.)
@@ -241,10 +298,14 @@ summary(MAvsIBMAres$sim)
 
 filter(MAvsIBMAres, voxel == 365) %>% 
   filter(parameter == 'MA.WeightedAvg') %>%
-  mutate(sigma = rep(trueMCvalues('sim_act', 'TrueG'), 3*10*25)) %>%
   group_by(sigma, tau, nstud) %>% 
   summarise(avgWA = mean(value)) %>% View()
 
+
+filter(MAvsIBMAres, voxel == 365) %>% 
+  filter(parameter == 'STHEDGE') %>%
+  group_by(sigma, tau, nstud) %>% 
+  summarise(avgWA = mean(value)) %>% View()
 
 filter(MAvsIBMAres, voxel == 125) %>%
   distinct() %>%
