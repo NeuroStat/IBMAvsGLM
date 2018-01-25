@@ -140,23 +140,29 @@ Note that $(X_G'X_G)^{-1}$ will be fixed as we always have the same amount of su
 
 ### Standardized effect sizes
 
-Standardized effect sizes at the second level (study level) are generally calculated by dividing the mean effect with the standard deviation. Or by multiplying the _t_-value with $\frac{1}{\sqrt{n}}$. 
+Standardized effect sizes (such as Cohen's _d_) at the second level (study level) are generally calculated by dividing the mean effect with the standard deviation. Or by multiplying the _t_-value with $\frac{1}{\sqrt{n}}$. 
 In our case, this corresponds to:
 
 \begin{align}
-\text{g} & = \frac{\text{t}}{\sqrt{n}} \\ \nonumber
+\text{d} & = \frac{\text{t}}{\sqrt{n}} \\ \nonumber
 & = \text{t}(X_G'X_G)^{-1} \\ \nonumber
 & = \frac{\hat\beta^{*}}{\left[ \sqrt{\sigma^2(X'X)^{-1} (X_G'X_G)^{-1}} \right]} \sqrt{(X_G'X_G)^{-1}}.
 \end{align}
 
 Or simplified:
 \begin{align}
-\text{g} = \frac{\hat\beta^{*}}{\sigma \sqrt{(X'X)^{-1}}}.
+\text{d} = \frac{\hat\beta^{*}}{\sigma \sqrt{(X'X)^{-1}}}.
 \end{align}
 
-The expected value over all simulations is equal to:
+We are mainly interested in Hedges' _g_. This is obtained by multiplying _d_ with a correction factor _J_:
+```{r 'corrJ'}
+ NeuRRoStat::corrJ
+```
+
+
+The expected value of Hedges' _g_ over all simulations is equal to:
 \begin{align}
-\frac{\sum_{m = 1}^M\text{g}_m}{M} = \frac{3}{100 \sqrt{(X'X)^{-1}}}.
+\frac{\sum_{m = 1}^M\text{g}_m}{M} = \frac{3}{100 \sqrt{(X'X)^{-1}}} \times J.
 \end{align}
 
 
