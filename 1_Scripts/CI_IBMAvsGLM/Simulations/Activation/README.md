@@ -6,3 +6,9 @@
 * Run on the HPC infrastructure
 
 Analyzed using [?]() script.
+
+# Between-study variability
+The folder _BSVar_ contains an assessment of empirical between-study variability in the fMRI literature.
+
+# True values
+The folder _TrueValues_3levels_ contains an investigation of the true effect size in the 3 level case of fMRI data.
