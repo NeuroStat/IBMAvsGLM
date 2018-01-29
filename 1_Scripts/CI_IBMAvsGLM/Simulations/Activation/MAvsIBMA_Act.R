@@ -280,13 +280,16 @@ for(p in 1:NumPar){
       # Make white noise
       whiteNoise <- array(rnorm(n = (prod(DIM) * nscan), mean = 0,
                                 sd = whiteSigma), dim = c(DIM, nscan))
-      # And smooth
-      smoothNoise <- AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
-                                      ksize = width, sigma = diag(sigma,3))
+      
+      # No smoothing of noise as we are unable to calculate the true value of
+      #   the effect size!!
+      smoothNoise <- whiteNoise
+        # AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
+        #                              ksize = width, sigma = diag(sigma,3))
+     
       # Create image for this subject
       SubjData <- StudData + smoothNoise
-      # plot(SubjData[5,5,5,], type = 'l')
-
+      
       # Transform it to correct dimension (Y = t x V)
       Y.data <- t(matrix(SubjData,ncol=nscan))
 

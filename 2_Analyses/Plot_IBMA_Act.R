@@ -67,10 +67,17 @@ set.seed(1990)
 
 # Directories of the data for different simulations
 DATAwd <- list(
-  'Take[MAvsIBMA_Act]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters"
+  'Take[MAvsIBMA_Act]' = 
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results"
 )
 NUMDATAwd <- length(DATAwd)
 currentWD <- 1
+
+# If available, load in Intermediate Results: this is location where summarized results are written
+LIR <- list(
+  'Take[MAvsIBMA_Act]' = 
+    '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/ProcessedResults'
+)
 
 # Number of conficence intervals
 CIs <- c('MA-weightVar','GLM-t')
@@ -145,14 +152,38 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM), each = length(TrueParam$TrueG))) 
   left_join(., SmGT_v, by = 'voxID') %>%
   # Multiply TrueG with Smoothed value to obtain smoothed Hedges' g
   mutate(SmoothG = TrueG * Smooth) %>%
+  # Add true COPE value as well as smoothed variant
+  mutate(TrueCOPE = trueMCvalues('sim_act', 'BOLDC'),
+         SmoothCOPE = TrueCOPE * Smooth) %>%
   # Drop tau
   select(-Tau)
   
+
+##
+###############
+### Data Wrangling
+###############
+##
+
+# Loading in raw data or processed data?
+RAWDATA <- FALSE
+
+if(RAWDATA){
+# Subset of simulations
+subset <- 10
+
+#### To check some results, we have a subset of the simulations
+for(i in 1:subset){
+  MAvsIBMAres <- readRDS(
+    paste(DATAwd[[currentWD]],'/ActMAvsIBMA_',i, '.rda', sep='')) %>%
+      bind_rows(MAvsIBMAres,.)
+}
+
 # Data frame with estimate only (without the CI bounds)
 Estimate <- MAvsIBMAres %>%
   filter(parameter %in% c('MA.WeightedAvg', 'IBMA.COPE')) %>%
-       left_join(., SmParam, by = c('voxel' = 'voxID',
-                                     'sigma' = 'TrueSigma'))
+  left_join(., SmParam, by = c('voxel' = 'voxID',
+                               'sigma' = 'TrueSigma'))
 
 # Adding the CI bounds. Seperated per method.
 MAwide <- MAvsIBMAres %>%
@@ -184,151 +215,105 @@ GLMwide <- MAvsIBMAres %>%
 # Bind data frames
 ProcessedDat <- bind_rows(MAwide, GLMwide)
 
-# Filter
-filter(ProcessedDat, SmoothG != 0)
+# Data processing:
+# 1) add CI_coverage and summarise
+CoveragePlot <- ProcessedDat %>% filter(SmoothG != 0) %>%
+  # 2) true smoothed value within CI limits?
+  mutate(cov_IND = ifelse(parameter == "MA.WeightedAvg",
+                          ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,1, 0),
+                          ifelse(SmoothCOPE >= CI_lower & SmoothG <= CI_upper,1, 0))) %>%
+  # 3) drop variables that we do not need to calculate coverages
+  #       --> drop sigma as info is in TrueD
+  select(sim, voxel, parameter, TrueD, tau, nstud, cov_IND) %>%
+  group_by(sim, parameter, TrueD, tau, nstud) %>%
+  summarise(coverage = mean(cov_IND),
+            sdCov = sd(cov_IND)) 
 
-# Add CI_coverage and summarise
-ProcessedDat %>% filter(SmoothG != 0) %>%
-  # True smoothed value within CI limits?
-  mutate(cov_IND = ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,
-         1, 0)) %>%
-  group_by(parameter, TrueD, tau, nstud) %>%
-  summarise(coverage = mean(cov_IND)) %>%
-  ggplot(., aes(x = nstud, y = coverage)) + 
-  geom_point(aes(colour = parameter, fill = parameter)) +
-  geom_line(aes(colour = parameter)) +
-  facet_wrap(TrueD ~ tau)
-
-
-filter(ProcessedDat, SmoothG == max(SmoothG))
-
-max(ProcessedDat$SmoothG)
-summary(Estimate$SmoothG)
-
-# 
-# whiteSigma <- 7
-# 
-# # Generating a design matrix
-# X <- simprepTemporal(total,1,onsets=onsets,effectsize = 100, durations=duration,
-#                      TR = TR, acc=0.1, hrf="double-gamma")
-# 
-# # Generate design
-# pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
-# 
-# # We know that: range(signal) = Beta_1 * range(X), so we solve for Beta_1 to get its true value.
-# es1 <- 0.01
-# base <- 100
-# signal <- es1 * (pred-base) + base
-# trueBeta1 <- (max(signal) - min(signal)) / (max(pred) - min(pred))
-# 
-# ## VAR(BETA1) ##
-# # Variance of beta 1 = variance of beta 1 at subject level / N.
-# # Variance of beta1_subj = whiteSigma^2/SSX
-# sigma2_Beta1_subj <- whiteSigma^2 / (sum((pred - mean(pred))^2))
-# sigma2_Beta1 <- sigma2_Beta1_subj / nsub
-# ## TVALUE ##
-# trueTval <- trueBeta1 / sqrt(sigma2_Beta1)
-# 
-# ## HEDGES' G ##
-# trueG <- hedgeG(t = trueTval, N = nsub)
-# 
-# ## LOCATION ##
-# # True (unsmoothed) values (object called GroundTruth, created in MAvsIBMA_Act.R)
-# load('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/2_Analyses/GroundTruth_Act.Rda')
-# 
-# # True values: either for Beta 1 or hedges' g
-# GroundTruthCope <- GroundTruth
-# GroundTruthCope[GroundTruth == 1] <- trueBeta1
-# GroundTruthCope[GroundTruth == 0] <- NA
-# GroundTruthES <- GroundTruth
-# GroundTruthES[GroundTruth == 1] <- trueG
-# GroundTruthES[GroundTruth == 0] <- NA
-# TrueLocations <- c(4,4,5)
-# 
-# 
-# cop <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-# varc <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
-# 
-# dim(cop)
-# array(apply(COPE, 1, mean), dim = DIM)[4,4,5]
-# cop[4,4,5]
-# array(apply(COPE, 1, t.test), dim = DIM)[4,4,5]
-# array(apply(COPE, 1, var), dim = DIM)[4,4,5]
-# 
-# varc[4,4,5]
-# 2.099544e-06 / nsub
-# 
-# array(apply(COPE, 1, mean), dim = DIM)[4,4,5] /
-#   sqrt(2.099544e-06 / nsub)
-# STMAP[4,4,5]
-
-
-##
-###############
-### Data Wrangling
-###############
-##
-
-
-#### First load in all the data
-AllData <- c()
-# Load in the data
-for(i in 1:31){
-  if(i == 7) next
-  if(i == 11) next
-  if(i == 17) next
-  if(i == 19) next
-  if(i == 20) next
-  if(i == 24) next
-  MAvsIBMAres <- 
-  readRDS(paste(DATAwd[[currentWD]],'/Results/ActMAvsIBMA_',i, '.rda', sep='')) %>%
-    bind_rows(MAvsIBMAres, .)
 }
 
-for(i in 1:10){
-  MAvsIBMAres <-   
-    readRDS(paste0('/Users/hanbossier/Desktop/ActMAvsIBMA_',i,'.rda')) %>%
-    bind_rows(MAvsIBMAres,.)
+# Also possible to process intermediate; summarized results
+if(!RAWDATA){
+  SimCoverage <- readRDS(file = 
+             paste(LIR[[currentWD]], '/coverage_Vox.rda', sep = ''))
+  CoveragePlot <- readRDS(file = 
+          paste(LIR[[currentWD]], '/coverage_Vox.rda', sep = '')) %>%
+    # Rename coverage to wSimCoverage
+    rename(wSimCoverage = coverage, wSimSDCov = sdCov) %>%
+    # Drop wSIMSDCov (not interested in)
+    select(-wSimSDCov) %>%
+    # Summarise over simulations
+    group_by(parameter, TrueD, tau, nstud) %>%
+    summarise(coverage = mean(wSimCoverage),
+              sdCoverage = sd(wSimCoverage))
 }
-
-test <- MAvsIBMAres
-
-MAvsIBMAres <- filter(MAvsIBMAres, sim == 1)
-summary(MAvsIBMAres$sim)
-
-filter(MAvsIBMAres, voxel == 365) %>% 
-  filter(parameter == 'MA.WeightedAvg') %>%
-  group_by(sigma, tau, nstud) %>% 
-  summarise(avgWA = mean(value)) %>% View()
-
-
-filter(MAvsIBMAres, voxel == 365) %>% 
-  filter(parameter == 'STHEDGE') %>%
-  group_by(sigma, tau, nstud) %>% 
-  summarise(avgWA = mean(value)) %>% View()
-
-filter(MAvsIBMAres, voxel == 125) %>%
-  distinct() %>%
-  filter(parameter == 'MA.WeightedAvg')
-  
-# Make nsim number of columns
-AllData <- matrix(AllData,ncol=nsim)
-
-# Load the naming structure of the data
-load(paste(DATAwd[[currentWD]],'/1/SCEN_1/ObjectsMAvsIBMA_1',sep='')); objects <- names(ObjectsMAvsIBMA); rm(ObjectsMAvsIBMA)
-OBJ.ID <- c(rep(objects[!objects %in% c("STHEDGE","STWEIGHTS")], each=prod(DIM)), rep(c("STHEDGE","STWEIGHTS"), each=c(prod(DIM)*nstud)))
-
-# Does dimension of AllData match the lenght of the OBJ.ID?
-dim(AllData)[1]==length(OBJ.ID)
-
-
-# Temp save
-#save(AllData, file = '/Volumes/1_5_TB_Han_HDD/Temp/AllData.Rda')
-#save(objects, file = '/Volumes/1_5_TB_Han_HDD/Temp/objects.Rda')
 
 #########################################################
 ###################### CI COVERAGE ######################
 #########################################################
+
+
+CoveragePlot %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = coverage)) + 
+  geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
+  geom_line(aes(colour = parameter), size = 0.9) +
+  geom_segment(aes(x = nstud, xend = nstud, y = coverage + sdCoverage,
+                    yend = coverage - sdCoverage,
+               colour = parameter), alpha = 0.75) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Empirical coverage') +
+  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                     values = c('#fdb462', '#bc80bd')) +
+  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                     values = c('#fdb462', '#bc80bd')) +
+  geom_hline(aes(yintercept = 0.95), colour = 'black') +
+  ggtitle('Empirical coverages of 95% CI', 
+          subtitle = 'Only voxels with true activation') +
+  facet_grid(d ~ tauL, labeller = label_parsed) +
+  theme_bw() 
+  
+
+SimCoverage %>%
+  select(-sdCov) %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+  # 4) plot the results
+  #filter(tau == 0 & TrueD == 0.14 & parameter == "IBMA.COPE") %>%
+  ggplot(., aes(x = nstud, y = coverage)) + 
+  geom_smooth(aes(colour = parameter), method = 'loess', level = 0.99) +
+  #geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
+  #geom_line(aes(colour = parameter), size = 0.9) +
+  # geom_segment(aes(x = nstud, xend = nstud, y = coverage + sdCoverage,
+  #                  yend = coverage - sdCoverage)) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Empirical coverage') +
+  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                     values = c('#fdb462', '#bc80bd')) +
+  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                    values = c('#fdb462', '#bc80bd')) +
+  geom_hline(aes(yintercept = 0.95), colour = 'black') +
+  ggtitle('Empirical coverages of 95% CI', 
+          subtitle = 'Only voxels with true activation') +
+  facet_grid(d ~ tauL, labeller = label_parsed) +
+  theme_bw() 
+
+
+  SimCoverage$parameter
+  
+
+ProcessedDat %>% filter(SmoothG != 0) %>%
+  # True smoothed value within CI limits?
+  mutate(cov_IND = ifelse(parameter == "MA.WeightedAvg",
+                          ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,1, 0),
+                          ifelse(SmoothCOPE >= CI_lower & SmoothG <= CI_upper,1, 0))) %>%
+  group_by(parameter, TrueD, tau, nstud) %>%
+  summarise(coverage = mean(cov_IND),
+            sdCov = sd(cov_IND))
+
 
 MAvsIBMAres %>%
 filter(parameter == 'MA.WeightedAvg') %>%
