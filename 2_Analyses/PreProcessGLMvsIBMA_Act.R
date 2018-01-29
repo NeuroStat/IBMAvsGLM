@@ -82,6 +82,7 @@ set.seed(1990)
 # Libraries
 library(ggplot2)
 library(tibble)
+library(tidyr)
 library(dplyr)
 library(AnalyzeFMRI)
 library(lattice)
