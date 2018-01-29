@@ -110,10 +110,13 @@ NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
 info <- data.frame('Sim' = c(1),
-                   'nsim' = c(500),
+                   'nsim' = c(1000),
                    'nsub' = trueMCvalues('sim_act', 'nsub'))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
+
+# However, if this machine, we select only 10 simulations (for testing code)
+if(MACHINE == 'MAC') nsim <- 10
 
 # Parameters that will be checked
 saveParam <- factor(levels = c('CI.MA.upper.weightVar', 'CI.MA.lower.weightVar',
@@ -140,6 +143,32 @@ coverage_Vox <- tibble(sim = integer(),
                       coverage = numeric(),
                       sdCov = numeric())
 
+# Data frame to calculate bias
+bias_all <- tibble(sim = integer(),
+                   voxel = integer(),
+                    parameter = saveParam,
+                    TrueD = numeric(),
+                    tau = numeric(),
+                    nstud = numeric(),
+                    bias = numeric())
+
+# Data frame to calculate CI length
+CIlength_all <- tibble(sim = integer(),
+                   voxel = integer(),
+                   parameter = saveParam,
+                   TrueD = numeric(),
+                   tau = numeric(),
+                   nstud = numeric(),
+                   CIlength = numeric())
+
+# Data frame to calculate CI length
+EstVar_all <- tibble(sim = integer(),
+                       voxel = integer(),
+                       parameter = saveParam,
+                       TrueD = numeric(),
+                       tau = numeric(),
+                       nstud = numeric(),
+                       EstVar = numeric())
 
 # Dimension of brain
 DIM <- trueMCvalues('sim_act', 'DIM')
@@ -207,6 +236,8 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM),
 
 # Load in all the data and summarise 
 for(i in 1:nsim){
+  if(i == 504) next
+  if(i == 505) next
   print(paste0('In simulation ',i))
   # First load in the data of this simulation
   MAvsIBMAres <- readRDS(
@@ -273,11 +304,96 @@ for(i in 1:nsim){
   coverage_Vox <- bind_rows(coverage_Vox, EmpCov)
   
   # Reset objects
-  rm(Estimate, MAwide, GLMwide, ProcessedDat, EmpCov)
+  rm(MAwide, GLMwide, EmpCov)
   
+  #################################
+  ###### PROCESSING CI LENGTH #####
+  #################################
+  print('Calculating CI length')
+  # Use ProcessedDat data frame
+  CIlength_all <- ProcessedDat %>%
+    mutate(CIlength = CI_upper - CI_lower) %>%
+    # Select parameters
+    select(sim, voxel, parameter, TrueD, tau, nstud, CIlength) %>%
+    bind_rows(CIlength_all,.)
+  
+  # Reset objects
+  rm(ProcessedDat)
+  
+  #################################
+  ###### PROCESSING STAN BIAS #####
+  #################################
+  print('Calculating standardized bias')
+  # Use the 'Estimate' dataframe
+  bias_all <- Estimate %>%
+    # Only active voxels
+    filter(SmoothG != 0) %>%
+    # Mutate bias column, depending on MA or GLM
+    mutate(bias = ifelse(parameter == 'MA.WeightedAvg',
+                         (value - SmoothG),
+                         (value - SmoothCOPE))) %>%
+    # Select the parameters
+    select(sim, voxel, parameter, TrueD, tau, nstud, bias) %>%
+    # Bind to data frame
+    bind_rows(bias_all,.)
+    
+  # %>%
+  #   # Mutate sd(value), per parameter
+  #   group_by(parameter) %>%
+  #   mutate(sd_theta_hat = sd(value)) %>%
+  #   # Now calculate standardized bias
+  #   mutate(sd_bias = (bias/sd_theta_hat) * 100)
+
+  # Reset objects
+  rm(Estimate)
+  
+  ####################################
+  ###### PROCESSING EST VARIANCE #####
+  ####################################
+  print('Calculating estimated variance')
+  
+  EstVar_all <- MAvsIBMAres %>%
+    # Filter the IBMA approach: we need to re-calculate the variance!
+    filter(parameter %in% c('IBMA.COPE', 'CI.IBMA.upper.t')) %>% 
+    # Spread out CI upper bound and middle point
+    spread(key = parameter, value = value) %>%
+    # Now calculate the length of one side of the CI
+    mutate(CIL = CI.IBMA.upper.t - IBMA.COPE) %>%
+    # Use t-interval to find SE
+    mutate(SE = CIL/(qt(0.975,df=nstud - 1))) %>%
+    # Square it
+    mutate(EstVar = SE^2) %>%
+    select(sim, voxel, sigma, tau, nstud, IBMA.COPE, EstVar) %>%
+    gather(key = 'parameter', value = 'value', IBMA.COPE) %>%
+    select(-value) %>%
+    # Now add the data frame with MA and EstTau (estimated tau) to this
+    bind_rows(.,
+      MAvsIBMAres %>%
+        filter(parameter %in% c('ESTTAU')) %>%
+        # Square tau to get variance
+        mutate(EstVar = value^2) %>%
+        # Rename
+        rename(param = parameter) %>%
+        select(-param, -value) %>%
+        mutate(parameter = 'MA.WeightedAvg')) %>%
+    mutate(parameter = factor(parameter)) %>%
+    # Now have TrueD added instead of TrueSigma
+    left_join(., select(SmParam, voxID, TrueD, TrueSigma), 
+              by = c('voxel' = 'voxID',
+                    'sigma' = 'TrueSigma')) %>%
+    select(-sigma) %>%
+    # Bind to data frame
+    bind_rows(EstVar_all, .)
   
 }
 
 # Save intermediate results
 saveRDS(coverage_Vox, file = paste(WIR, '/coverage_Vox.rda', sep = ''))
+saveRDS(CIlength_all, file = paste(WIR, '/CIlength_all.rda', sep = ''))
+saveRDS(bias_all, file = paste(WIR, '/bias_all.rda', sep = ''))
+saveRDS(EstVar_all, file = paste(WIR, '/EstVar_all.rda', sep = ''))
+
+
+
+
 
