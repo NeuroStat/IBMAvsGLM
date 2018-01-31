@@ -238,16 +238,9 @@ X <- simprepTemporal(total,1,onsets = onsets,
 # Generate time series for ONE active voxel: predicted signal, this is the design
 pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
 
-# Now we create the BOLD signal by converting to % BOLD signal changes
-# Need to be in appropriate scale
-# signal_BOLDC <- BOLDC * (pred-base) + base
-
 # Smooth the GT and put it into the map
 SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
                       ksize = width, sigma = diag(sigma,3))
-
-# Now get the smoothed (raw) signal
-# Rawsignal <- SmGT %o% signal_BOLDC
 
 
 ##################
@@ -270,19 +263,12 @@ for(p in 1:NumPar){
   # For loop over studies
   for(t in 1:nstud){
   print(paste('At study ', t, ', parameter ', p, ' in simulation ', K, sep=''))
-
     # Create the delta: subject specific true effect, using tau as between-study
     #   heterogeneity.
-    # Distributed with mean true signal and variance tau
-    #BStudHet <- array(rnorm(n = prod(DIM), mean = 0, sd = tau), dim = DIM)
-    #StudData <- Rawsignal * array(BStudHet, dim = c(DIM, nscan))
-    # Transform to voxel * nscan matrix (instead of 4D image)
-    #StudDataT <- array(StudData, dim = c(prod(DIM), nscan))
-    
-    # BOLD signal of this study at center of activation
+    # This is done by generating a study specific BOLD signal at center of activation.
     BOLDCS <- BOLDC + rnorm(n = 1, sd = tau)
     
-    # Need to be in appropriate scale
+    # Need to be in correct scale
     signal_BOLDCS <- BOLDCS * (pred-base) + base
     
     # Now get the smoothed (raw) signal for this study
@@ -295,25 +281,15 @@ for(p in 1:NumPar){
     for(s in 1:nsub){
       # Multilevel data generation:
       # White noise around signal in each voxel. 
-      # Signal is study specific by generating BOLD effect for each study.
+      # We take study signal and add white noise (using apply)
       # No smoothing of noise as we are unable to calculate the true value of
-      #   the effect size!!
+      #   the effect size if we do so!!
       SubjData <- t(apply(StudDataT, MARGIN = 1, 
             FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
                                                 sd = whiteSigma)}))
 
-      # whiteNoise <- array(rnorm(n = (prod(DIM) * nscan), mean = 0,
-      #                           sd = whiteSigma), dim = c(DIM, nscan))
-      # smoothNoise <- whiteNoise
-      #   # AnalyzeFMRI::GaussSmoothArray(whiteNoise, voxdim = voxdim,
-      #   #                              ksize = width, sigma = diag(sigma,3))
-      # 
-      # # Create image for this subject
-      # SubjData <- StudData + smoothNoise
-      
       # Transform it to correct dimension (Y = t x V)
       Y.data <- t(SubjData)
-        #t(matrix(SubjData,ncol=nscan))
 
       ####************####
       #### ANALYZE DATA: 1e level GLM
@@ -440,14 +416,6 @@ for(p in 1:NumPar){
   STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
   ESTTAU <- array(as.vector(mapply(tau,Y = STHEDGEL,
               W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
-  # fit <- 
-  #   metafor::rma(yi = STHEDGEL[[729]], vi = STWEIGHTSL[[729]], method = "DL")$tau2
-  # ESTTAU[728]
-  # NeuRRoStat::tau(Y = STHEDGEL[[729]], STWEIGHTSL[[729]], k = 30)
-  # which(ESTTAU == max(ESTTAU))
-  # ESTTAU[211]
-  # metafor::rma(yi = STHEDGEL[[211]], vi = c(1/STWEIGHTSL[[211]]), method = "DL")$tau2
-  # NeuRRoStat::tau(Y = STHEDGEL[[148]], STWEIGHTSL[[148]], k = 30)
 
   # Random effect weights
   STWEIGHTS_ran <- (1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud))
