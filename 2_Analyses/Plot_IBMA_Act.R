@@ -418,86 +418,6 @@ CoveragePlot %>%
 
 
 
-MAvsIBMAres %>%
-filter(parameter == 'MA.WeightedAvg') %>%
-  mutate(sigma = rep(trueMCvalues('sim_act', 'TrueG'), 3*10*25)) %>%
-
-# Calculate coverage
-mean.coverage.weightVar.MA <- data.frame(UPPER = c(AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),]),
-          LOWER = c(AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),]),
-          TrueValue = rep(array(GroundTruthES, dim = prod(DIM)), nsim),
-          sim = rep(seq(1,nsim), each = prod(DIM)),
-          voxel = rep(seq(1, prod(DIM)), nsim)) %>%
-  mutate(COVERAGE = ifelse(TrueValue <= UPPER & TrueValue >= LOWER, 1, 0)) %>%
-  group_by(voxel) %>% summarise(mean.coverage.weightVar.MA = mean(COVERAGE, na.rm = TRUE)) %>% tbl_df()
-
-mean.coverage.t.IBMA <- data.frame(UPPER = c(AllData[which(OBJ.ID=='CI.IBMA.upper.t'),]),
-                                         LOWER = c(AllData[which(OBJ.ID=='CI.IBMA.lower.t'),]),
-                                         TrueValue = rep(array(GroundTruthCope, dim = prod(DIM)), nsim),
-                                         sim = rep(seq(1,nsim), each = prod(DIM)),
-                                         voxel = rep(seq(1, prod(DIM)), nsim)) %>%
-  mutate(COVERAGE = ifelse(TrueValue <= UPPER & TrueValue >= LOWER, 1, 0)) %>%
-  group_by(voxel) %>% summarise(mean.coverage.weightVar.IBMA = mean(COVERAGE, na.rm = TRUE)) %>% tbl_df()
-
-
-data.frame(UPPER = c(AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),]),
-           LOWER = c(AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),]),
-           TrueValue = rep(array(GroundTruthES, dim = prod(DIM)), nsim)) %>% tbl_df() %>% View()
-
-
-summarise(mean.coverage.t.IBMA, mean(mean.coverage.weightVar.IBMA, na.rm = TRUE))
-
-dim(AllData[which(OBJ.ID == 'IBMA.COPE'),50])
-levelplot(array(AllData[which(OBJ.ID == 'IBMA.COPE'),50], dim = DIM))
-
-select(mean.coverage.t.IBMA, mean.coverage.weightVar.IBMA) %>% unlist(.) %>% as.numeric(.) %>%
-  array(., dim = DIM)
-
-levelplot(array(unlist(mean.coverages[['MA']]), dim = DIM)[(TrueLocations[1] - 2):(TrueLocations[1] + 2),
-                                                           (TrueLocations[2] - 2):(TrueLocations[2] + 2),
-                                                           (TrueLocations[3] - 2):(TrueLocations[3] + 2)])
-
-levelplot(array(unlist(mean.coverages[['IBMA']]), dim = DIM)[(TrueLocations[1] - 2):(TrueLocations[1] + 2),
-                                                           (TrueLocations[2] - 2):(TrueLocations[2] + 2),
-                                                           (TrueLocations[3] - 2):(TrueLocations[3] + 2)])
-
-levelplot(array(AllData[which(OBJ.ID == 'IBMA.COPE'),1], dim = DIM)[(TrueLocations[1] - 2):(TrueLocations[1] + 2),
-                                                           (TrueLocations[2] - 2):(TrueLocations[2] + 2),
-                                                           (TrueLocations[3] - 2):(TrueLocations[3] + 2)])
-
-levelplot(array(AllData[which(OBJ.ID == 'MA.WeightedAvg'),1], dim = DIM)[(TrueLocations[1] - 2):(TrueLocations[1] + 2),
-                                                                  (TrueLocations[2] - 2):(TrueLocations[2] + 2),
-                                                                  (TrueLocations[3] - 2):(TrueLocations[3] + 2)])
-
-
-# Check hedge g
-allG <- array(AllData[which(OBJ.ID == 'STHEDGE'),], dim = c(DIM, nstud, nsim))
-avgG <- NULL
-for(j in 1:nsim){
-  for(i in 1:nstud){
-    tmp <- allG[,,,i,j]
-    tmp[GroundTruth == 0] <- NA
-    avgG <- c(avgG, mean(tmp, na.rm = TRUE))
-  }
-}
-mean(avgG)
-trueG     # Hmmm
-
-
-
-hist(AllData[which(OBJ.ID == 'IBMA.COPE'),])
-hist(AllData[which(OBJ.ID == 'MA.WeightedAvg'),])
-
-# Put the 2 coverages in a list
-mean.coverages <- list('MA' = mean.coverage.weightVar.MA[,2],'IBMA' = mean.coverage.t.IBMA[,2])
-
-# Mean over all voxels
-CI.coverages <- data.frame(
-  'Mean' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,mean, na.rm = TRUE)}),ncol=1),
-  'SD' = matrix(sapply(mean.coverages, FUN=function(...){apply(...,2,sd, na.rm = TRUE)}),ncol=1),
-  'CI' = factor(CIs, levels=CIs, labels=CIs)
-)
-
 
 
 #########################################################
@@ -526,25 +446,6 @@ CIL %>%
   theme_bw() 
 
 
-# Calculate CI length
-mean.length.weightVar.MA <-
-  mean.length.t.IBMA <-
-  array(NA,dim=c(prod(DIM),1))
-
-mean.length.weightVar.MA[,1] <- apply(AllData[which(OBJ.ID=='CI.MA.upper.weightVar'),] - AllData[which(OBJ.ID=='CI.MA.lower.weightVar'),],1,mean)
-mean.length.t.IBMA[,1] <- apply(AllData[which(OBJ.ID=='CI.IBMA.upper.t'),] - AllData[which(OBJ.ID=='CI.IBMA.lower.t'),],1,mean)
-
-
-# Put the 2 lengths in a list
-mean.lengths <- list('MA' = mean.length.weightVar.MA,'IBMA' = mean.length.t.IBMA)
-
-# Average over all voxels
-CI.lengths <- data.frame(
-  'Mean' = matrix(sapply(mean.lengths, FUN=function(...){apply(...,2,mean)}),ncol=1),
-  'SD' = matrix(sapply(mean.lengths, FUN=function(...){apply(...,2,sd)}),ncol=1),
-  'CI' = factor(CIs, levels=CIs, labels=CIs)
-)
-
 
 
 #########################################################
@@ -572,24 +473,6 @@ BIAS %>%
   facet_grid(d ~ tauL, labeller = label_parsed) +
   theme_bw() 
 
-MA.SDBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,sd)
-MA.MEANBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,mean)
-
-IBMA.SDBETA <- apply(AllData[which(OBJ.ID=='IBMA.COPE'),],1,sd)
-IBMA.MEANBETA <- apply(AllData[which(OBJ.ID=='IBMA.COPE'),],1,mean)
-
-mean.bias.MA <- matrix(((abs(MA.MEANBETA)-matrix(GroundTruth, ncol = 1))/(MA.SDBETA))*100,ncol=1)
-mean.bias.IBMA <- matrix(((abs(IBMA.MEANBETA)-matrix(GroundTruth, ncol = 1))/(IBMA.SDBETA))*100,ncol=1)
-
-# Put the 2 bias values in a list
-mean.bias <- list('MA' = mean.bias.MA,'IBMA' = mean.bias.IBMA)
-
-# Average over all voxels
-CI.bias <- data.frame(
-  'Mean' = matrix(sapply(mean.bias, FUN=function(...){apply(...,2,mean)}),ncol=1),
-  'SD' = matrix(sapply(mean.bias, FUN=function(...){apply(...,2,sd)}),ncol=1),
-  'CI' = factor(CIs, levels=CIs, labels=c('MA', 'GLM'))
-)
 
 ##########################################################
 ################### ESTIMATED VARIANCE ###################
