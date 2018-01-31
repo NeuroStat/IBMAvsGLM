@@ -111,7 +111,7 @@ NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
 info <- data.frame('Sim' = c(1),
-                   'nsim' = c(1000),
+                   'nsim' = c(500),
                    'nsub' = trueMCvalues('sim_act', 'nsub'))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
@@ -133,7 +133,8 @@ MAvsIBMAres <- tibble(sim = integer(),
                       parameter = saveParam,
                       sigma = numeric(),
                       tau = numeric(),
-                      nstud = numeric())
+                      nstud = numeric(),
+                      FLAMEdf_3 = numeric())
 
 # Data frame with coverage results, averaged over all voxels:
 coverage_Vox <- tibble(sim = integer(),
@@ -143,6 +144,15 @@ coverage_Vox <- tibble(sim = integer(),
                       nstud = numeric(),
                       coverage = numeric(),
                       sdCov = numeric())
+
+# Data frame with coverage results, NOT averaged over all voxels:
+coverage_all <- tibble(sim = integer(),
+                       voxel = integer(),
+                       parameter = saveParam,
+                       TrueD = numeric(),
+                       tau = numeric(),
+                       nstud = numeric(),
+                       cov_IND = numeric())
 
 # Data frame to calculate bias
 bias_all <- tibble(sim = integer(),
@@ -237,8 +247,6 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM),
 
 # Load in all the data and summarise 
 for(i in 1:nsim){
-  if(i == 504) next
-  if(i == 505) next
   print(paste0('In simulation ',i))
   # First load in the data of this simulation
   MAvsIBMAres <- readRDS(
@@ -304,6 +312,20 @@ for(i in 1:nsim){
   # Bind to data frame
   coverage_Vox <- bind_rows(coverage_Vox, EmpCov)
   
+  # Also prepare object without summarizing over the voxels
+  coverage_all <- ProcessedDat %>% filter(SmoothG != 0) %>%
+    # True smoothed value within CI limits?
+    # NOTE: smoothed G or smoothed COPE
+    mutate(cov_IND = ifelse(parameter == "MA.WeightedAvg",
+                            ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,1, 0),
+                            ifelse(SmoothCOPE >= CI_lower & SmoothG <= CI_upper,1, 0))) %>%
+    # Drop variables that we do not need to calculate coverages
+    # sigma dropped as info is in TrueD
+    select(voxel, parameter, TrueD, tau, nstud, cov_IND) %>%
+    # Add ID of simulation
+    mutate(sim = i) %>%
+    bind_rows(coverage_all,.)
+  
   # Reset objects
   rm(MAwide, GLMwide, EmpCov)
   
@@ -313,6 +335,7 @@ for(i in 1:nsim){
   print('Calculating CI length')
   # Use ProcessedDat data frame
   CIlength_all <- ProcessedDat %>%
+    filter(SmoothG != 0) %>%
     mutate(CIlength = CI_upper - CI_lower) %>%
     # Select parameters
     select(sim, voxel, parameter, TrueD, tau, nstud, CIlength) %>%
@@ -338,13 +361,6 @@ for(i in 1:nsim){
     # Bind to data frame
     bind_rows(bias_all,.)
     
-  # %>%
-  #   # Mutate sd(value), per parameter
-  #   group_by(parameter) %>%
-  #   mutate(sd_theta_hat = sd(value)) %>%
-  #   # Now calculate standardized bias
-  #   mutate(sd_bias = (bias/sd_theta_hat) * 100)
-
   # Reset objects
   rm(Estimate)
   
@@ -361,7 +377,7 @@ for(i in 1:nsim){
     # Now calculate the length of one side of the CI
     mutate(CIL = CI.IBMA.upper.t - IBMA.COPE) %>%
     # Use t-interval to find SE
-    mutate(SE = CIL/(qt(0.975,df=nstud - 1))) %>%
+    mutate(SE = CIL/(qt(0.975,df = FLAMEdf_3))) %>%
     # Square it
     mutate(EstVar = SE^2) %>%
     select(sim, voxel, sigma, tau, nstud, IBMA.COPE, EstVar) %>%
@@ -371,8 +387,9 @@ for(i in 1:nsim){
     bind_rows(.,
       MAvsIBMAres %>%
         filter(parameter %in% c('ESTTAU')) %>%
-        # Square tau to get variance
-        mutate(EstVar = value^2) %>%
+        # No need to square it as we saved squared tau already (see function 
+        # ?NeuRRoStat::tau)!
+        mutate(EstVar = value) %>%
         # Rename
         rename(param = parameter) %>%
         select(-param, -value) %>%
@@ -390,6 +407,7 @@ for(i in 1:nsim){
 
 # Save intermediate results
 saveRDS(coverage_Vox, file = paste(WIR, '/coverage_Vox.rda', sep = ''))
+saveRDS(coverage_all, file = paste(WIR, '/coverage_all.rda', sep = ''))
 saveRDS(CIlength_all, file = paste(WIR, '/CIlength_all.rda', sep = ''))
 saveRDS(bias_all, file = paste(WIR, '/bias_all.rda', sep = ''))
 saveRDS(EstVar_all, file = paste(WIR, '/EstVar_all.rda', sep = ''))

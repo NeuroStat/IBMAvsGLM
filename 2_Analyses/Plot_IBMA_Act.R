@@ -104,7 +104,8 @@ MAvsIBMAres <- tibble(sim = integer(),
                       parameter = saveParam,
                       sigma = numeric(),
                       tau = numeric(),
-                      nstud = numeric())
+                      nstud = numeric(),
+                      FLAMEdf_3 = numeric())
 
 # Dimension of brain
 DIM <- trueMCvalues('sim_act', 'DIM')
@@ -165,7 +166,7 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM), each = length(TrueParam$TrueG))) 
 ###############
 ##
 
-# Loading in raw data or processed data?
+# Loading in raw data (TRUE) or processed data (FALSE)?
 RAWDATA <- FALSE
 
 if(RAWDATA){
@@ -233,8 +234,12 @@ CoveragePlot <- ProcessedDat %>% filter(SmoothG != 0) %>%
 
 # Also possible to process intermediate; summarized results
 if(!RAWDATA){
+  ### COVERAGE AVERAGED OVER ALL ACTIVE VOXELS ###
+  # Values of each simulation for the covarage: usefull for plot with smoothing method
   SimCoverage <- readRDS(file = 
              paste(LIR[[currentWD]], '/coverage_Vox.rda', sep = ''))
+  
+  # Processed values (summarised) for coverage: ready to plot
   CoveragePlot <- readRDS(file = 
           paste(LIR[[currentWD]], '/coverage_Vox.rda', sep = '')) %>%
     # Rename coverage to wSimCoverage
@@ -245,13 +250,58 @@ if(!RAWDATA){
     group_by(parameter, TrueD, tau, nstud) %>%
     summarise(coverage = mean(wSimCoverage),
               sdCoverage = sd(wSimCoverage))
+  
+  ### COVERAGE NOT AVERAGED OVER ALL ACTIVE VOXELS ###
+  COVdata <- readRDS(file = 
+                paste(LIR[[currentWD]], '/coverage_all.rda', sep = ''))
+  # Summarise over simulations first
+  COV <- CILdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+    summarise(AvgSimCov = mean(cov_IND)) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
+    summarise(AvgCOV = mean(AvgSimCov))
+
+  # Values for CI length
+  CILdata <- readRDS(file = 
+              paste(LIR[[currentWD]], '/CIlength_all.rda', sep = ''))
+  CIL <- CILdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+    summarise(AvgSimCIL = mean(CIlength)) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
+    summarise(AvgCIL = mean(AvgSimCIL))
+  
+  # Values for standardized bias
+  BiasData <- readRDS(file = 
+      paste(LIR[[currentWD]], '/bias_all.rda', sep = ''))
+  BIAS <- BiasData %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+    summarise(AvgBias = mean(bias),
+           SDBias = sd(bias)) %>%
+    mutate(StBias = AvgBias/SDBias * 100) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
+    summarise(AvgStBias = mean(StBias))
+  
+  # Values for estimated variance
+  EstVarData <- readRDS(file = 
+            paste(LIR[[currentWD]], '/EstVar_all.rda', sep = ''))
+  EstVar <- EstVarData %>% 
+    # Temp sqrt as I assumed I had tau, but I already had tau^2
+    mutate(EstVar = ifelse(parameter == "MA.WeightedAvg",
+                                          sqrt(EstVar), EstVar)) %>%
+    group_by(voxel, parameter, TrueD, tau, nstud) %>%
+    summarise(AvgSimEstVar = mean(EstVar)) %>%
+    ungroup() %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
+    summarise(AvgEstVar = mean(AvgSimEstVar))
+  
 }
 
 #########################################################
 ###################### CI COVERAGE ######################
 #########################################################
 
-
+#### FIRST SECTION: AVERAGED OVER ALL VOXELS AND THEN SIMULATIONS ####
+# Plot with SD bars. 
+# However, these sd's are calculated on the average coverage of the grid of voxels.
+# Per simulation. Hence the SD will be lower due to averaging coverage within each
+# simulation. 
 CoveragePlot %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
@@ -276,19 +326,15 @@ CoveragePlot %>%
   theme_bw() 
   
 
-SimCoverage %>%
-  select(-sdCov) %>%
+# Plot without the SD bars.
+CoveragePlot %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
          tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
   # 4) plot the results
-  #filter(tau == 0 & TrueD == 0.14 & parameter == "IBMA.COPE") %>%
   ggplot(., aes(x = nstud, y = coverage)) + 
-  geom_smooth(aes(colour = parameter), method = 'loess', level = 0.99) +
-  #geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
-  #geom_line(aes(colour = parameter), size = 0.9) +
-  # geom_segment(aes(x = nstud, xend = nstud, y = coverage + sdCoverage,
-  #                  yend = coverage - sdCoverage)) +
+  geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
+  geom_line(aes(colour = parameter), size = 0.9) +
   scale_x_continuous('Number of studies in the third level') +
   scale_y_continuous('Empirical coverage') +
   scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
@@ -297,22 +343,79 @@ SimCoverage %>%
                     values = c('#fdb462', '#bc80bd')) +
   geom_hline(aes(yintercept = 0.95), colour = 'black') +
   ggtitle('Empirical coverages of 95% CI', 
-          subtitle = 'Only voxels with true activation') +
+          subtitle = 'Only voxels with true activation - Cohen\' s d corresponds to center of activation') +
   facet_grid(d ~ tauL, labeller = label_parsed) +
   theme_bw() 
 
 
-  SimCoverage$parameter
-  
+# Plot without the SD bars: all tau on same panel
+CoveragePlot %>%
+  # First ungroup to round tau
+  ungroup() %>%
+  mutate(tau = round(tau,2)) %>%
+  # Now group again
+  group_by(parameter, TrueD, tau) %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = coverage, group = interaction(parameter, factor(tau)))) + 
+  geom_point(aes(colour = interaction(parameter, factor(tau)), 
+                 fill = interaction(parameter, factor(tau))), 
+             size = 0.8) +
+  geom_line(aes(colour = interaction(parameter, factor(tau)), 
+                group = interaction(parameter, factor(tau))), size = 0.7) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Empirical coverage') +
+  geom_hline(aes(yintercept = 0.95), colour = 'black') +
+  ggtitle('Empirical coverages of 95% CI for each level of tau', 
+          subtitle = 'Only voxels with true activation - Cohen\' s d corresponds to center of activation') +
+  facet_grid(d ~ ., labeller = label_parsed) +
+  theme_bw() 
 
-ProcessedDat %>% filter(SmoothG != 0) %>%
-  # True smoothed value within CI limits?
-  mutate(cov_IND = ifelse(parameter == "MA.WeightedAvg",
-                          ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,1, 0),
-                          ifelse(SmoothCOPE >= CI_lower & SmoothG <= CI_upper,1, 0))) %>%
-  group_by(parameter, TrueD, tau, nstud) %>%
-  summarise(coverage = mean(cov_IND),
-            sdCov = sd(cov_IND))
+
+
+# # Plot with loess smoother: however so many datapoints that band is not there
+# SimCoverage %>%
+#   select(-sdCov) %>%
+#   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+#          tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+#   ggplot(., aes(x = nstud, y = coverage)) + 
+#   geom_smooth(aes(colour = parameter), method = 'loess', level = 0.99) +
+#   scale_x_continuous('Number of studies in the third level') +
+#   scale_y_continuous('Empirical coverage') +
+#   scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
+#                      values = c('#fdb462', '#bc80bd')) +
+#   scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
+#                     values = c('#fdb462', '#bc80bd')) +
+#   geom_hline(aes(yintercept = 0.95), colour = 'black') +
+#   ggtitle('Empirical coverages of 95% CI', 
+#           subtitle = 'Only voxels with true activation') +
+#   facet_grid(d ~ tauL, labeller = label_parsed) +
+#   theme_bw() 
+
+
+#### SECOND SECTION: AVERAGED OVER ALL SIMULATIONS AND THEN VOXELS :-) ####
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 MAvsIBMAres %>%
@@ -401,6 +504,28 @@ CI.coverages <- data.frame(
 ####################### CI LENGTH #######################
 #########################################################
 
+
+# Plot without the SD bars.
+CIL %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = AvgCIL)) + 
+  geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
+  geom_line(aes(colour = parameter), size = 0.9) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Average 95% CI length') +
+  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                     values = c('#fdb462', '#bc80bd')) +
+  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                    values = c('#fdb462', '#bc80bd')) +
+  ggtitle('Average length of the 95% CI', 
+          subtitle = 'Only voxels with true activation - Cohen\' s d corresponds to center of activation') +
+  facet_grid(d ~ tauL, labeller = label_parsed) +
+  theme_bw() 
+
+
 # Calculate CI length
 mean.length.weightVar.MA <-
   mean.length.t.IBMA <-
@@ -426,6 +551,27 @@ CI.lengths <- data.frame(
 ################### STANDARDIZED BIAS ###################
 #########################################################
 
+
+# Plot without the SD bars.
+BIAS %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = AvgStBias)) + 
+  geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
+  geom_line(aes(colour = parameter), size = 0.9) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Standardized bias') +
+  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                     values = c('#fdb462', '#bc80bd')) +
+  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                    values = c('#fdb462', '#bc80bd')) +
+  ggtitle('Average Standardized Bias', 
+          subtitle = 'Only voxels with true activation - Cohen\' s d corresponds to center of activation') +
+  facet_grid(d ~ tauL, labeller = label_parsed) +
+  theme_bw() 
+
 MA.SDBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,sd)
 MA.MEANBETA <- apply(AllData[which(OBJ.ID=='MA.WeightedAvg'),],1,mean)
 
@@ -445,6 +591,33 @@ CI.bias <- data.frame(
   'CI' = factor(CIs, levels=CIs, labels=c('MA', 'GLM'))
 )
 
+##########################################################
+################### ESTIMATED VARIANCE ###################
+##########################################################
+
+
+# Plot without the SD bars.
+EstVar %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+  ungroup() %>%
+  mutate(parameter = factor(parameter)) %>%
+  group_by(parameter, TrueD, tau) %>%
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = AvgEstVar)) + 
+  geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
+  geom_line(aes(colour = parameter), size = 0.9) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Estimated Variance') +
+  scale_color_manual('Model', labels = c('FLAME', 'Random effects MA'),
+                     values = c('#fdb462', '#bc80bd')) +
+  scale_fill_manual('Model', labels = c('FLAME', 'Random effects MA'),
+                    values = c('#fdb462', '#bc80bd')) +
+  ggtitle('Average Estimated Variance', 
+          subtitle = 'Only voxels with true activation - Cohen\' s d corresponds to center of activation') +
+  facet_grid(d ~ tauL, labeller = label_parsed) +
+  theme_bw() 
 
 ##
 ###############
