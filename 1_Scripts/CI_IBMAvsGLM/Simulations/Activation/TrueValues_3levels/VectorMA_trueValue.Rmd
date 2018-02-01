@@ -55,7 +55,8 @@ Some general parameters for this report:
 
 * 29 subjects per study
 * 50 studies per MA
-* No between-study variability
+* No between-subject heterogeneity
+* No between-study heterogeneity
 
 # Theory
 
@@ -80,7 +81,8 @@ and
 
 ### Design matrix
 
-To obtain $X$, we use _neuRosim_. In the section/code below, the design matrix is denoted as _pred - base_. Furthermore $\beta_0$ is denoted as _base_. First we set the following parameters:
+To obtain $X$, we use _neuRosim_. In the section/code below, the design matrix is denoted as _pred - base_. Furthermore $\beta_0$ is denoted as _base_. We fit a simple linear regression model (only one predictor) to estimate the average effect of the only condition in our design. 
+First we set the following parameters:
 
 * TR
 * number of scans
@@ -114,11 +116,13 @@ Y_G = \beta^*_0 + \beta^*_1 X_G + \varepsilon^*.
 
 Now $Y_G = \hat\beta_1$, the vector of estimated first level parameters. In our case, $\beta^*_0 = 0$ and $X_G$ is the second level design matrix which is equal to a column of 1's with length equal to the number of subjects. Furthermore, $\varepsilon^* \sim N(0, \sigma^{*2})$. We fit the model using OLS. Note that as the OLS estimate for $\beta_1$ is equal to the average of $Y$, the true value for $\beta^*_1 = 3$, which is the average over all first level estimates. 
 
-Also note that $\sigma^*$ corresponds to between-subject variability. Hence, this is equal to variability of the estimated first level parameters. We thus get:
+Note that the variance of $\varepsilon^*$ contains two components. First we have between subject variability $\sigma_G^{2}$. Second, since we use $Y_G = \hat\beta_1$ as input, we have variability of the estimated parameters at the first level. This is denoted as $\text{Var}_\beta(\hat\beta_1)$. From theory, we know what the variance of the estimated $\beta$ parameters is at the first level. As we do not induce between subject variability in these simulations, we get:
 \begin{align}
-\sigma^{*2} & = \text{Var}(\widehat{\beta_1}) \\ \nonumber
-& = \sigma^2(X'X)^{-1}
+\text{Var}(\varepsilon^*) & = \sigma_G^{2} + \text{Var}_\beta(\widehat{\beta_1}) \\ \nonumber
+& = 0 + \sigma^2(X'X)^{-1}
 \end{align}
+
+
 
 
 ### True values
@@ -145,7 +149,7 @@ In our case, this corresponds to:
 
 \begin{align}
 \text{d} & = \frac{\text{t}}{\sqrt{n}} \\ \nonumber
-& = \text{t}(X_G'X_G)^{-1} \\ \nonumber
+& = \text{t}\left[\sqrt{(X_G'X_G)}\right]^{-1} \\ \nonumber
 & = \frac{\hat\beta^{*}}{\left[ \sqrt{\sigma^2(X'X)^{-1} (X_G'X_G)^{-1}} \right]} \sqrt{(X_G'X_G)^{-1}}.
 \end{align}
 
