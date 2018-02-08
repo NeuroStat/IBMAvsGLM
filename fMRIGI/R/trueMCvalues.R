@@ -106,6 +106,7 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     # Tau: values come from estimateBSvar.R, no covariate
     # 0th, 50th and 100th percentile of observed between-study variability
     Tau <- sqrt(c(0,0.10,0.495))
+    I2 <- c(0, 62.61, 87.28)
 
     # Hedges' g can be obtained by multiplying Cohen's d with the correction factor.
     TrueG <- TrueD * NeuRRoStat::corrJ(N = nsub)
