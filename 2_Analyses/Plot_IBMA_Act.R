@@ -255,7 +255,7 @@ if(!RAWDATA){
   COVdata <- readRDS(file = 
                 paste(LIR[[currentWD]], '/coverage_all.rda', sep = ''))
   # Summarise over simulations first
-  COV <- CILdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+  COV <- COVdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
     summarise(AvgSimCov = mean(cov_IND)) %>%
     group_by(parameter, TrueD, tau, nstud) %>%
     summarise(AvgCOV = mean(AvgSimCov))
@@ -486,7 +486,7 @@ EstVar %>%
          tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
   ungroup() %>%
   mutate(parameter = factor(parameter)) %>%
-  group_by(parameter, TrueD, tau) %>%
+  group_by(parameter, TrueD, tau) %>% 
   # 4) plot the results
   ggplot(., aes(x = nstud, y = AvgEstVar)) + 
   geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
