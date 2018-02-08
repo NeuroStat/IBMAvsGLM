@@ -8,11 +8,19 @@
 #################
 
 
+
+####################################################################
+#### NOTE: MORE RECENT VERSIONS IN REGULAR AND MODERATOR ANALYSIS!!!
+####################################################################
+
+
+
 ##
 ###############
 ### Notes
 ###############
 ##
+
 
 #   In this script, we estimate the observed amount of between-study heterogeneity.
 #   We have a database containing 32 studies measuring PAIN > NO PAIN.
@@ -61,7 +69,7 @@ nstud <- 32
 database <- read.csv2('database.csv', header = TRUE, stringsAsFactors = FALSE)
 
 # Read in ROI mask 
-ROI <- readNIfTI('pain_pFgA_z_FDR_0.01_forward_mask')[,,]
+ROI <- readNIfTI('pain_pAgF_z_FDR_0.01_forward_mask')[,,]
 # Dimension in 3D
 DIM3D <- dim(ROI)
 # Switch to array
