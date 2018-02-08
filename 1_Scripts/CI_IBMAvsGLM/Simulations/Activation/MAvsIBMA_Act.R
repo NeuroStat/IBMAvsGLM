@@ -185,7 +185,8 @@ whiteSigma_vec <- trueMCvalues('sim_act', 'TrueSigma')
 
 
 # Vector of between study variability
-Tau_vec <- trueMCvalues('sim_act', 'Tau')
+Tau_vec <- c(0, 36, 94)
+  #trueMCvalues('sim_act', 'Tau')
 
 # Change number of studies in the MA.
 # However, need to find more sensible values.
