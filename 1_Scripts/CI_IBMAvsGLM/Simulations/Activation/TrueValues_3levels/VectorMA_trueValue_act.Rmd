@@ -1,7 +1,7 @@
 ---
-title: "Standardized effect size in 3 levels"
+title: "Standardized effect sizes in 3 levels with between-study heterogeneity"
 author: "Han Bossier"
-date: "23-1-2018"
+date: "1-2-2018"
 output:
   pdf_document:
     number_sections: yes
@@ -56,9 +56,11 @@ Some general parameters for this report:
 * 29 subjects per study
 * 50 studies per MA
 * No between-subject heterogeneity
-* No between-study heterogeneity
+* WITH between-study heterogeneity
 
 # Theory
+
+In this report, we assume independence between all three levels (eg. no subjects are resampled).
 
 ## First level
 
@@ -124,7 +126,6 @@ Note that the variance of $\varepsilon^*$ contains two components. First we have
 
 
 
-
 ### True values
 
 We will save the estimates for $\beta_G$ and its variance of each study in one meta-analysis for some Monte-Carlo runs. Over all **M** simulations, we should get:
@@ -172,8 +173,46 @@ The expected value of Hedges' _g_ over all simulations is equal to:
 
 ## Third level
 
-The estimated value at the third level (meta-analysis) corresponds with the weighted average of all standardized effect sizes at the second level. We use a random-effects model with the method of moments estimator for between-study heterogeneity.
-The weights correspond to the inverse of the sum of within- and between study variability. However, we do not add between-study variability in the Monte-Carlo simulation setting. Furthermore, as we use the same amount of subjects for each study, the expected value of the within-study variability will be equal for each study. Hence asymptotically, all weights are the same and the weighted average is equal to an unweighted average.
+### General linear model
+
+Before estimating the population effect size, we can also run a third level GLM using OLS. Again, we have for each voxel the following model:
+\begin{align}
+Y_M = \beta^{**}_0 + \beta^{**}_1 X_M + \varepsilon^{**}.
+\end{align}
+
+Now $Y_M = \hat\beta^*_1$, the vector of estimated second level parameters. In our case, $\beta^{**}_0 = 0$ and $X_M$ is the third level design matrix which is equal to a column of 1's with length equal to the number of studies. Furthermore, $\varepsilon^{**} \sim N(0, \sigma^{**2})$. We fit the model using OLS. Note that as the OLS estimate for $\beta^{**}_1$ is again equal to the average over all first level estimates. 
+
+The variance of $\varepsilon^{**}$ now contains three components. First we have between study variability $\sigma_M^{2}$. Then we have variability of the estimated second level parameter estimates, denoted as $\text{Var}_\beta(\hat\beta^*_1)$. Finally we have variability of the estimated parameters at the first level, denoted as $\text{Var}_\beta(\hat\beta_1)$.
+Since we do not induce between subject variability in our simulations ($\sigma_G^2 = 0$), we get:
+\begin{align}
+\text{Var}(\varepsilon^{**}) & = \sigma_M^{2} + \text{Var}_\beta(\widehat{\beta^*_1}) + \text{Var}_\beta(\widehat{\beta_1}) \\ \nonumber
+& = \sigma_M^{2} + \sigma_G^{2}(X_G'X_G)^{-1} + \sigma^2(X'X)^{-1}  \\ \nonumber
+& = \sigma_M^{2} + 0 + \sigma^2(X'X)^{-1}
+\end{align}
+
+#### True values
+
+We will set the between-study variability ($\sigma_M^2$) to 100. 
+
+The estimates for $\beta_M$ and its variance are saved. Over all **M** simulations, we should get:
+
+\begin{align}
+&\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\hat\beta_m^{**}}{M} & \approx \text{E}(\hat\beta^{**}) & \\ \nonumber
+& & & = \beta^{**} = \beta^* = \beta = 3 \\
+&\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\widehat{\text{Var}(\beta_m^{**})}}{M} & \approx \text{E}(\widehat{\text{Var}(\beta^{**})}) & \\ \nonumber
+& & & = \sigma^{**2}(X_M'X_M)^{-1} \\ \nonumber
+& & & = \sigma_M^{2}(X_M'X_M)^{-1} \sigma^2(X'X)^{-1}
+\end{align}
+
+Note that $(X_M'X_M)^{-1}$ will be fixed as we always have the same amount of studies It is equal to ```r solve(t(matrix(1, nrow = 50)) %*% matrix(1, nrow = 50))```
+
+
+### Population effect size
+
+The estimated population effect size ($\mu$) at the third level (meta-analysis) corresponds to the weighted average of all standardized effect sizes at the second level. We use a random-effects model with the method of moments estimator for between-study heterogeneity.
+The weights correspond to the inverse of the sum of within- and between study variability. 
+
+Note that we use the same amount of subjects for each study. Hence the expected value of the within-study variability will be equal for each study. Asymptotically, all weights are the same and the weighted average is equal to an unweighted average.
 Hence the true value for $\mu$, the population effect is equal to:
 
 \begin{align}
@@ -182,6 +221,15 @@ Hence the true value for $\mu$, the population effect is equal to:
 \end{align}
 as $E(g)$ is a constant in our set-up.
 
+The question now is, what will the estimated between-study heterogeneity of the population effect size be?
+I don't think it is that $\tau^2 = \sigma^2_M$. 
+Could it be that it is equal to the variance of the estimated third level $\beta^{**}$ parameter? In other words:
+\begin{align}
+\tau^2 &= \text{Var}(\beta^{**}) \\ \nonumber
+&= \sigma_M^{2}(X_M'X_M)^{-1}.
+\end{align}
+
+Let us find out.
 
 # Monte-Carlo simulation set-up
 
@@ -241,7 +289,6 @@ area <- neuRosim::simprepSpatial(regions = 1, coord = list(TrueLocations),
 truth <- neuRosim::simVOLfmri(design = truthdesign, image = area,
                     dim = DIM, SNR = 1, noise = "none")[,,,1]
 GroundTruth <- ifelse(truth > 0, 1, 0)
-levelplot(GroundTruth, main = 'Spatial Ground Truth')
 ```
 
 Next we create a true signal (no noise). We convert the signal to the appropriate scale (we choose a base signal of 100) and make sure the amplitude of the signal corresponds to % BOLD signal. This is done through:
@@ -288,9 +335,6 @@ plot(pred, type = 'l', main = 'raw signal',
 plot(signal_BOLDC, type = 'l', main = paste0('scaled signal: \n ', BOLDC,'% BOLD change'), 
      sub = expression(Refer ~ to ~ GLM ~ as ~ beta[0] + beta[1] * X),
     ylab = 'BOLD', xlab = 'Time')
-
-# Now get the smoothed (raw) signal in each voxel
-Rawsignal <- GroundTruth %o% signal_BOLDC
 ```
 
 
@@ -299,14 +343,14 @@ To generate data, we start with setting variance parameters:
 # Sigma of white noise
 whiteSigma <- 100
 # Between study variability
-tau <- 0 
+tau <- 10
 ```
 
-Now we generate data for each subject and study. We start with creating a value for the study-specific mean. Note that there is no between-study variability. Hence it does not really make sense to do this, but later we might add between-study heterogeneity.
+Now we generate data for each subject and study. We start with creating a value for the study-specific BOLD effect. This will induce between-study variability. Note, we do not add between-subject heterogeneity.
 
-Then we take the true signal and add white noise to the time series. 
+Then we take the study true signal and add white noise to the time series. 
 
-The following **R** code is given as example (not run).
+The following **R** code is given as example.
 ```{r 'data-generation-example', cache = TRUE}
 # Seed
 set.seed(pi)
@@ -321,23 +365,33 @@ STCOPE <- STVARCOPE <- STVALUE <- array(NA,dim=c(prod(DIM),nstud))
   
 # For loop over studies
 for(t in 1:nstud){
-  # Create the delta: subject specific true effect, using tau as between-study
-  #   heterogeneity.
-  # Distributed with mean true signal and variance tau
-  StudData <- Rawsignal + array(
-    array(rnorm(n = prod(DIM), mean = 0, sd = tau),
-          dim = DIM), dim = c(DIM, nscan))
+    # Create the delta: subject specific true effect, using tau as between-study
+    #   heterogeneity.
+    # This is done by generating a study specific BOLD signal at center of activation.
+    BOLDCS <- BOLDC + rnorm(n = 1, sd = tau)
+    
+    # Need to be in correct scale
+    signal_BOLDCS <- BOLDCS * (pred-base) + base
+    
+    # Now get the unsmoothed (raw) signal for this study
+    StudData <- GroundTruth %o% signal_BOLDCS
+    
+    # Transform to voxel * nscan matrix (instead of 4D image)
+    StudDataT <- array(StudData, dim = c(prod(DIM), nscan))
+
   # For loop over nsub
   for(s in 1:nsub){
-    # Make white noise
-    whiteNoise <- array(rnorm(n = (prod(DIM) * nscan), mean = 0,
-                              sd = whiteSigma), dim = c(DIM, nscan))
-
-    # Create image for this subject
-    SubjData <- StudData + whiteNoise
+    # Multilevel data generation:
+    # White noise around signal in each voxel. 
+    # We take study signal and add white noise (using apply)
+    # No smoothing of noise as we are unable to calculate the true value of
+    #   the effect size if we do so!!
+    SubjData <- t(apply(StudDataT, MARGIN = 1, 
+          FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
+                                              sd = whiteSigma)}))
 
     # Transform it to correct dimension (Y = t x V)
-    Y.data <- t(matrix(SubjData,ncol=nscan))
+    Y.data <- t(SubjData)
     
     ####************####
     #### ANALYZE DATA: 1e level GLM
@@ -417,9 +471,7 @@ MAvec <- data.frame(sim = 1,
 As an example, this is the time series of the latest subject at the voxel with activation:
 ```{r 'time-series-subj'}
 par(mfrow = c(1,1))
-plot(SubjData[TrueLocations[1],
-              TrueLocations[2],
-              TrueLocations[3],], type = 'l', main = 'Example subject time series',
+plot(SubjData[365,], type = 'l', main = 'Example subject time series',
      ylab = 'BOLD', xlab = 'Time')
 ```
 
@@ -435,15 +487,23 @@ We saved the following objects in each simulation:
 
 First we read in the **R** objects.
 
-```{r 'read-data', cache = TRUE}
+```{r 'read-data'}
 # Location of data
-LocDat <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/VectorMA/Results'
+LocDat <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/VectorMA/Results_act'
 
 # Empty data frames
 VectorMA <- tibble(sim = integer(),
-                   Wavg = numeric(),
-                   sigma = numeric(),
-                   nstud = numeric())
+                Wavg = numeric(),
+                EstTau2 = numeric(),
+                sigma = numeric(),
+                tau = numeric(),
+                nstud = numeric())
+VectorGLM <- tibble(sim = integer(),
+                GLMcope = numeric(),
+                EstRes = numeric(),
+                sigma = numeric(),
+                tau = numeric(),
+                nstud = numeric())
 studSimDat <- tibble(Value = numeric(),
                     param = factor(levels= c('COPEstud', 'VARCOPEstud')),
                     studID = integer(),
@@ -461,12 +521,15 @@ for(i in 1:c(nsim/10)){
   
   # Read in study data: latest study in MA
   studSimDat <- readRDS(paste0(LocDat, '/studSimDat_', i, '.rda')) %>%
-    rename(studID = subID) %>%
     bind_rows(studSimDat,. )
   
   # Read in MA data
   VectorMA <- readRDS(paste0(LocDat, '/MAvec_', i, '.rda')) %>%
     bind_rows(VectorMA,. )
+  
+  # Read in GLM data
+  VectorGLM <- readRDS(paste0(LocDat, '/GLMvec_', i, '.rda')) %>%
+    bind_rows(VectorGLM,. )
 }
 ```
 
@@ -483,9 +546,16 @@ firstRes <- subSimDat %>%
   mutate(simID = rep(1:c(nsim/10), each = nsub*2)) %>% 
   spread(key = param, value = Value) %>%
   mutate(Tval = COPEsub / sqrt(VARCOPEsub)) %>%
-  summarise(AvgCope = mean(COPEsub),
-            AvgVarCope = mean(VARCOPEsub),
-            AvgTVal = mean(Tval))
+  # First summarise within each simulation => over all subjects within a study
+  group_by(simID) %>%
+  summarise(AvgCopeS = mean(COPEsub),
+            AvgVarCopeS = mean(VARCOPEsub),
+            AvgTValS = mean(Tval)) %>%
+  ungroup() %>%
+  # Now over all simulations
+  summarise(AvgCope = mean(AvgCopeS),
+          AvgVarCope = mean(AvgVarCopeS),
+          AvgTVal = mean(AvgTValS))
 firstRes
 ```
 
@@ -501,6 +571,7 @@ knitr::kable(data.frame(AvgCope = Ebeta1, AvgVarCope = EvarBeta1, AvgTVal = Et1,
   caption = "First level analysis")
 ```
 
+Note that this may seem off. However, we have added between-study variability. So each study has its own true value. Here, we look at subjects at level 1, while the true value is calculated at the third level...
 
 ## Second level
 
@@ -510,16 +581,23 @@ We only saved these values for every 10th simulation (small coding mistake). Hen
 Let us also re-calulculate Hedges' _g_, using the estimate for the _t_-value. 
 
 ```{r 'second-level-results'}
-secondRes <- 
-  studSimDat %>% 
+secondRes <- studSimDat %>% 
   mutate(simID = rep(1:c(nsim/10), each = nstud*2)) %>% 
   spread(key = param, value = Value) %>%
   mutate(Tval = COPEstud / sqrt(VARCOPEstud)) %>%
   mutate(HedgesG = hedgeG(t = Tval, N = nsub)) %>%
-  summarise(AvgCope = mean(COPEstud),
-            AvgVarCope = mean(VARCOPEstud),
-            AvgTVal = mean(Tval),
-            AvgG = mean(HedgesG))
+  # Average within all MA's => in each simulation
+  group_by(simID) %>%
+  summarise(AvgCopeS = mean(COPEstud),
+            AvgVarCopeS = mean(VARCOPEstud),
+            AvgTValS = mean(Tval),
+            AvgGS = mean(HedgesG)) %>%
+  ungroup() %>%
+  # Average across simulations
+  summarise(AvgCope = mean(AvgCopeS),
+            AvgVarCope = mean(AvgVarCopeS),
+            AvgTVal = mean(AvgTValS),
+            AvgG = mean(AvgGS))
 secondRes
 ```
 
@@ -547,32 +625,58 @@ knitr::kable(data.frame(AvgCope = Ebeta1S, AvgVarCope = EvarBeta1S,
   caption = "Second level analysis")
 ```
 
+Again, this may seem off due to studies having their own true value. 
 
 ## Third level
 
-Finally, we have ```r nsim``` number of Monte-Carlo simulations where we save the estimate for the weighted average.
+Finally, we have ```r nsim``` number of Monte-Carlo simulations where we save the estimate for the weighted average and the estimated between-study heterogeneity ($\tau^2$).
 
 ```{r 'third-level-results'}
 thirdRes <- 
   VectorMA %>% 
-  summarise(AvgMu = mean(Wavg))
+  summarise(AvgMu = mean(Wavg),
+            AvgTau2 = mean(EstTau2))
 thirdRes
 ```
 
-Comparing with $E(g)$, we have:
+Comparing $\hat\mu$ with $\mu$ and $\widehat\tau^2$ with $\tau^2$, we have:
 ```{r 'expected-values-third-level'}
+MAX <- matrix(1, nrow = nstud)
+MACt <- solve(t(MAX) %*% MAX)
+ETau2 <- tau^2 * MACt
+  #tau^2 - (tau^2 * MACt * whiteSigma^2 * design_factor)
+#EvarBeta1*GrCt
 EhedgeGMA <- EhedgeG
 
 # Print in data frame
-knitr::kable(data.frame(AvgMu = EhedgeGMA,
+knitr::kable(data.frame(AvgMu = EhedgeGMA, AvgTau2 = ETau2, 
            Value = 'Expected', Level = 'Third', stringsAsFactors = FALSE) %>% 
   bind_rows(., mutate(thirdRes, Value = 'Observed', Level = 'Third')),
-  caption = "Third level analysis")
+  caption = "Third level analysis - meta-analysis")
 ```
 
-We do observe what we expect on all three levels.
+We now do the same for the GLM.
 
+```{r 'third-level-results-GLM'}
+thirdResGLM <- 
+  VectorGLM %>% 
+  summarise(AvgCOPE = mean(GLMcope),
+            AvgSigma2 = mean(EstRes))
+thirdResGLM
+```
+
+Comparing $E(\hat\beta)$ with $\beta$ and the unexplained variance of the GLM, we have:
+```{r 'expected-values-third-level-GLM'}
+# Print in data frame
+knitr::kable(data.frame(AvgCOPE = BOLDC, AvgSigma2 = tau**2, 
+           Value = 'Expected', Level = 'Third', stringsAsFactors = FALSE) %>% 
+  bind_rows(., mutate(thirdResGLM, Value = 'Observed', Level = 'Third')),
+  caption = "Third level analysis - GLM")
+```
+
+Hmm, it does seem to be off a little bit.
 
 # Conclusion
 
-All seem fine. We do observe what we expect to find.
+Not there yet.
+

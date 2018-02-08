@@ -71,9 +71,20 @@ library(fMRIGI)
 
 # Data frame with results:
 MAvec <- tibble(sim = integer(),
-                      Wavg = numeric(),
-                      sigma = numeric(),
-                      nstud = numeric())
+                Wavg = numeric(),
+                EstTau2 = numeric(),
+                sigma = numeric(),
+                tau = numeric(),
+                nstud = numeric())
+
+
+GLMvec <- tibble(sim = integer(),
+                GLMcope = numeric(),
+                EstRes = numeric(),
+                sigma = numeric(),
+                tau = numeric(),
+                nstud = numeric())
+
 ##
 ###############
 ### Functions
@@ -145,13 +156,13 @@ TrueLocVec <- as.numeric(which(array(TrueLocVec_tmp, dim = prod(DIM)) == 1,
 
 # We generate a temporary design for getting a true signal
 truthdesign <- neuRosim::simprepTemporal(1, 1, onsets = 1, effectsize = 1,
-                               durations = 1, TR = 1, acc = 0.1)
+                                         durations = 1, TR = 1, acc = 0.1)
 
 # Now use this to get a sphere shaped area
 area <- neuRosim::simprepSpatial(regions = 1, coord = list(TrueLocations),
-                       radius = ext, form = "sphere", fading = 0)
+                                 radius = ext, form = "sphere", fading = 0)
 truth <- neuRosim::simVOLfmri(design = truthdesign, image = area,
-                    dim = DIM, SNR = 1, noise = "none")[,,,1]
+                              dim = DIM, SNR = 1, noise = "none")[,,,1]
 GroundTruth <- ifelse(truth > 0, 1, 0)
 
 #######################################
@@ -160,8 +171,8 @@ GroundTruth <- ifelse(truth > 0, 1, 0)
 
 # Generating a design matrix
 X <- neuRosim::simprepTemporal(total,1,onsets = onsets,
-                     effectsize = 1, durations = duration,
-                     TR = TR, acc = 0.1, hrf = "double-gamma")
+                               effectsize = 1, durations = duration,
+                               TR = TR, acc = 0.1, hrf = "double-gamma")
 
 # Generate time series for ONE active voxel: predicted signal, this is the design
 pred <- neuRosim::simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
@@ -169,9 +180,6 @@ pred <- neuRosim::simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FAL
 # Now we create the BOLD signal by converting to % BOLD signal changes
 # Need to be in appropriate scale
 signal_BOLDC <- BOLDC * (pred-base) + base
-
-# Now get the smoothed (raw) signal
-Rawsignal <- GroundTruth %o% signal_BOLDC
 
 ## Design parameters
 # Extend the design matrix with an intercept
@@ -192,7 +200,7 @@ design_factor <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST)
 whiteSigma <- 100
 
 # Between study variability
-tau <- 0 
+tau <- 100 
 
 # Start 10 iterations (increases efficiency since iterations run very fast)
 for(ID in startIndex:endIndex){
@@ -200,19 +208,27 @@ for(ID in startIndex:endIndex){
   # Set starting seed
   starting.seed <- pi*ID
   set.seed(starting.seed)
-
+  
   # Empty vectors
   COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
   STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- STVALUE <- array(NA,dim=c(prod(DIM),nstud))
-    
+  
   # For loop over studies
   for(t in 1:nstud){
     # Create the delta: subject specific true effect, using tau as between-study
     #   heterogeneity.
-    # Distributed with mean true signal and variance tau
-    StudData <- Rawsignal + array(
-      array(rnorm(n = prod(DIM), mean = 0, sd = tau),
-            dim = DIM), dim = c(DIM, nscan))
+    # This is done by generating a study specific BOLD signal at center of activation.
+    BOLDCS <- BOLDC + rnorm(n = 1, sd = tau)
+    
+    # Need to be in correct scale
+    signal_BOLDCS <- BOLDCS * (pred-base) + base
+    
+    # Now get the unsmoothed true signal for this study
+    StudData <- GroundTruth %o% signal_BOLDCS
+    
+    # Transform to voxel * nscan matrix (instead of 4D image)
+    StudDataT <- array(StudData, dim = c(prod(DIM), nscan))
+
     # For loop over nsub
     for(s in 1:nsub){
       # Multilevel data generation:
@@ -221,12 +237,12 @@ for(ID in startIndex:endIndex){
       # No smoothing of noise as we are unable to calculate the true value of
       #   the effect size if we do so!!
       SubjData <- t(apply(StudDataT, MARGIN = 1, 
-                    FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
-                                                        sd = whiteSigma)}))
+                          FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
+                                                              sd = whiteSigma)}))
       
       # Transform it to correct dimension (Y = t x V)
       Y.data <- t(SubjData)
-      
+
       ####************####
       #### ANALYZE DATA: 1e level GLM
       ####************####
@@ -252,7 +268,7 @@ for(ID in startIndex:endIndex){
     ####************####
     #### GROUP ANALYSIS: 2e level using OLS
     ####************####
-  
+    
     # Group COPE
     STCOPE[,t] <- apply(COPE, 1, mean)
     
@@ -266,8 +282,8 @@ for(ID in startIndex:endIndex){
     GrCt <- solve(t(GrX) %*% GrX)
     # Residuals
     GrRes <- (t(Gr.Y - GrX %*% matrix(STCOPE[,t], nrow = 1))) %*% 
-              (Gr.Y - GrX %*% matrix(STCOPE[,t], nrow = 1))/
-              (nsub - 1)
+      (Gr.Y - GrX %*% matrix(STCOPE[,t], nrow = 1))/
+      (nsub - 1)
     GrRes <- diag(GrRes)
     # Denominator: checked using t.test
     STVARCOPE[,t] <- GrRes %*% GrCt
@@ -278,7 +294,7 @@ for(ID in startIndex:endIndex){
     # Clean objects
     rm(Gr.Y, GrRes)
   }
-    
+  
   # MA on voxel 365
   voxCOPE <- STCOPE[365,]
   voxVARCOPE <- STVARCOPE[365,]
@@ -292,33 +308,54 @@ for(ID in startIndex:endIndex){
   
   # Weighted average
   WA <- as.numeric(rma(yi = voxHedgeG, vi = voxVarG, 
-      method = 'DL')$beta)
+                       method = 'DL')$beta)
+  
+  # Estimated variance
+  tau2 <- as.numeric(rma(yi = voxHedgeG, vi = voxVarG, 
+                       method = 'DL')$tau2)
   
   # Bind results in data frame
   MAvec <- data.frame(sim = ID,
-             Wavg = WA,
-             sigma = whiteSigma,
-             nstud = nstud) %>%
+                      Wavg = WA,
+                      EstTau2 = tau2,
+                      sigma = whiteSigma,
+                      tau = tau,
+                      nstud = nstud) %>%
     bind_rows(MAvec,. )
-
+  
+  # Use GLM to estimate residual variance on voxCOPE
+  sigm2 <- summary(lm(voxCOPE ~ 1))$sigma^2
+  GLMcope <- summary(lm(voxCOPE ~ 1))$coeff[1, 'Estimate']
+  
+  # Bind results in data frame
+  GLMvec <- data.frame(sim = ID,
+                       GLMcope = GLMcope,
+                      EstRes = sigm2,
+                      sigma = whiteSigma,
+                      tau = tau,
+                      nstud = nstud) %>%
+    bind_rows(GLMvec,. )
+  
+  
+  
 }
 
 # Some extra objects to save
 # Cope of one voxel of subjects from latest study in latest MA
 subSimDat <- data.frame(Value = 
-                c(COPE[TrueLocVec,],
-                  VARCOPE[TrueLocVec, ]),
-                param = rep(c('COPEsub', 'VARCOPEsub'), each = nsub),
-                subID = rep(1:nsub, 2),
-                voxID = TrueLocVec)
+                          c(COPE[TrueLocVec,],
+                            VARCOPE[TrueLocVec, ]),
+                        param = rep(c('COPEsub', 'VARCOPEsub'), each = nsub),
+                        subID = rep(1:nsub, 2),
+                        voxID = TrueLocVec)
 
 # Same for latest study in the latest MA
 studSimDat <- data.frame(Value = 
-                  c(STCOPE[TrueLocVec,],
-                    STVARCOPE[TrueLocVec, ]),
-                param = rep(c('COPEstud', 'VARCOPEstud'), each = nstud),
-                studID = rep(1:nstud, 2),
-                voxID = TrueLocVec)
+                           c(STCOPE[TrueLocVec,],
+                             STVARCOPE[TrueLocVec, ]),
+                         param = rep(c('COPEstud', 'VARCOPEstud'), each = nstud),
+                         studID = rep(1:nstud, 2),
+                         voxID = TrueLocVec)
 
 
 ##################
@@ -334,3 +371,5 @@ saveRDS(object = studSimDat, file = paste0(wd, '/Results/studSimDat_', hpcID, '.
 # MA data
 saveRDS(object = MAvec, file = paste0(wd, '/Results/MAvec_', hpcID, '.rda'))
 
+# GLM data
+saveRDS(object = GLMvec, file = paste0(wd, '/Results/GLMvec_', hpcID, '.rda'))

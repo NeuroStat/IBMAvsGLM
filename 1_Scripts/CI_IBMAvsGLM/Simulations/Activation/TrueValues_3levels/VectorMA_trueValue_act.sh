@@ -28,5 +28,5 @@ cd $srcdir
 
 #----------------------------------------------------#
 # GO TIME: let us do it in chunks of 10 simulations: let ID go from 1 --> 100
-Rscript VectorMA_trueValue.R ${PBS_ARRAYID} "HPC" 
+Rscript VectorMA_trueValue_act.R ${PBS_ARRAYID} "HPC" 
 #----------------------------------------------------#
