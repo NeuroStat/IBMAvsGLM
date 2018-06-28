@@ -1,0 +1,364 @@
+---
+title: "Variance Estimation - Second Level FSL"
+author: "Han Bossier"
+date: "15/6/2018"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    df_print: tibble
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	comment = NA,
+	cache = FALSE,
+	warning = FALSE,
+	fig.align='center'
+)
+
+# Load in libraries
+library(AnalyzeFMRI)
+library(lattice)
+library(gridExtra)
+library(oro.nifti)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(knitr)
+library(tidyr)
+library(reshape2)
+library(lme4)
+library(MASS)
+library(RColorBrewer)
+library(mvmeta)
+library(metafor)
+library(devtools)
+library(neuRosim)
+library(NeuRRoStat)
+library(fMRIGI)
+```
+
+\pagebreak
+
+# Introduction
+
+# Simulation
+
+In this section, we discuss the data generation and the models we use to analyze the data. This will be using a mixed model approach with *lmer* (**R**), while the second approach is using the typical two-stage approach in fMRI and the mixed model *FLAME1* from **FSL**. 
+
+## Data generation
+
+Let us first define some global variables.
+
+```{r 'global'}
+# Location of raw data
+RawDat <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Variance_2lvl/'
+# During OHBM, I used the following path
+#RawDat <- '/Users/hanbossier/Desktop/Results_VAR2LVL/'
+
+# Number of batches simulated
+IDs <- 200
+
+# Number of simulations within a batch
+numSimID <- 10
+
+# Number of subjects
+nsub <- 50
+
+# Value for sigma in the model
+sigma_eps <- 100
+
+# Between subject variability (variance of random slope)
+sigma_b2 <- c(0, 5, 10)
+
+# Variance of random intercept
+sigma_b1 <- c(0, 1, 1)
+```
+
+We generate time series for each subject for *one voxel*. We have 200 scans ($T$) with a TR of 2 seconds, a block design of 20 sec ON/OFF, a double-gamma HRF convolution and a true BOLD percent signal change of 3 percent.
+We generate $T$ datapoints ($Y$) for each subject $i = 1, \dots,  N$ using the following GLM:
+
+$$
+Y_i = (\beta_0 + b_{0i}) + (\beta_1 + b_{1i})X + \varepsilon_i,
+$$
+with $b_{0i} \sim N(0, 1)$, $b_{1i} \sim N(0, \sigma^2_{b})$ and $\varepsilon_i \sim N(0, \sigma^2_e)$. 
+We see that we use the same design matrix $X$ for each subject and we only generate Gaussian random (white) noise. Furthermore, we have $\sigma^2_{b} \in \{0,5^2,10^2\}$ and $\sigma^2_{e} = 10^2$. Finally, we have $\beta_0 = 100$. 
+
+```{r 'example-data-generation'}
+# Signal characteristics
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+onsets <- list(on1)
+duration <- list(20)
+
+###################
+#### Generate a design: GROUND TRUTH DESIGN
+###################
+
+# true %BOLD change
+BOLDC <- 3
+
+# Base/intercept of signal
+intcpt <- 100
+
+#######################################
+#### DESIGN AND SIGNAL TIME SERIES ####
+#######################################
+
+# Generating a design matrix: convolution of block design with double-gamma HRF
+X <- neuRosim::simprepTemporal(total,1,onsets = onsets,
+                               effectsize = 1, durations = duration,
+                               TR = TR, acc = 0.1, hrf = "double-gamma")
+
+# X vector for one subject = predicted signal
+X_s <- neuRosim::simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
+
+# Now the model will be: (intcpt + b1) + (BOLDC + b2) * pred + epsilon
+
+## Design parameters
+# Extend the design matrix with the intercept
+xIN <- cbind(intcpt, X_s)
+
+# Contrast: not interested in intercept
+CONTRAST <- matrix(c(0,1),nrow=1)
+
+# Calculate (X'X)^(-1) with contrast
+design_factor <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST)
+```
+
+To generate random intercept and slopes, we first generate subject-specific values for $b_{i0}$ and $b_{1i}$ where we set $\sigma^2_b = 5^2$ using a variance-covariance matrix:
+
+```{r 'var-covar-D'}
+var_cov_D <- rbind(c(sigma_b1[2]**2, 0), c(0, sigma_b2[2]**2))
+
+# Generate the subject-specific values for intercept and slope using this D-matrix
+B_matrix <- MASS::mvrnorm(nsub, mu=c(0,0), Sigma = var_cov_D)
+```
+
+Now looping over all subjects, we generate:
+```{r 'one-time-series'}
+# Empty vector
+Y <- data.frame() %>% as_tibble()
+
+# For loop over all subjects
+for(i in 1:nsub){
+  # Generate nscan values, corresponding to time series of one subject 
+    # note: random intercept and random slope generated earlier
+  Y_s <- (intcpt + B_matrix[i,1]) + ((BOLDC + B_matrix[i,2]) * X_s) + 
+    rnorm(n = nscan, mean = 0, sd = sigma_eps)
+  
+  # Add to data frame
+  Y <- data.frame(Y = Y_s, X = X_s, sub = as.integer(i)) %>% as_tibble() %>%
+    bind_rows(Y, .)
+}
+```
+
+
+Let us plot the time series for one subject in one active voxel (red line is true response for this subject).
+```{r 'plot-time-series', fig.align = 'center'}
+plot(Y_s, type = 'l', main = 'Example of one time series for the last subject',
+     xlab = 'Time')
+lines(x = ((intcpt + B_matrix[nsub,1]) + ((BOLDC + B_matrix[nsub,2]) * X_s)), col = 'red')
+```
+
+## Models
+
+The analysis of the time series of all $N$ subjects using **R** is straightforward:
+```{r 'analysis-R', eval = TRUE}
+lmer(Y ~ 1 + X + (1 + X|sub), data = Y)
+```
+
+Using **FSL**, we split the analysis in two stages. First we fit the time series to each subject (using OLS as we generate white noise) and save the estamated parameter with its variance in _.nifti_ files which we write to a temporary folder. Note, we had to create a matrix of $2 \times2 \times 2$ voxels, all containing the same values as FSL is not able to run its functions on just one voxel (I think it has something to do with the indices). 
+Then we run _feat_ (option _flame1_) on the 4D cope and 4D varcope maps with a given mask. Note that we first generate some auxilirary files (such as the design matrix), then run _feat_ (not executed here) and finally read back the results in.
+
+```{r 'analysis-FSL', eval=FALSE}
+# For this, we need to first analyze each subject individually, save COPE and VARCOPE
+# and then proceed.
+# We call this object secLevel
+secLevel <- Y %>% 
+  group_by(sub) %>%
+  do(., 
+     # For each subject, fit linear model with an intercept and X as predictors
+     broom::tidy( 
+       lm(Y ~ 1 + X, data = .))) %>%
+  # Filter on predictor
+  filter(term == 'X') %>%
+  # Now select the estimate and standard error
+  dplyr::select(sub, estimate, std.error) %>%
+  # Create variance
+  mutate(varCope = std.error^2)
+
+# Create 4D images (all voxels in first 3 dimensions are the same), otherwise FSL crashes!
+# Then convert the estimates and variance to nifti images
+COPE4D <- nifti(img=array(rep(as.numeric(secLevel$estimate), each = 8), 
+                          dim=c(2,2,2,nsub)),
+                dim=c(2,2,2,nsub), datatype = 16)
+VARCOPE4D <- nifti(img=array(rep(as.numeric(secLevel$varCope), each = 8),
+                             dim=c(2,2,2,nsub)), 
+                   dim=c(2,2,2,nsub), datatype = 16)
+
+# Write them to DataWrite
+writeNIfTI(COPE4D, filename = paste(DataWrite,'/COPE',sep=''), gzipped=FALSE)
+writeNIfTI(VARCOPE4D, filename = paste(DataWrite,'/VARCOPE',sep=''), gzipped=FALSE)
+
+#########################
+## ETC ETC SEE var_2lvl.R
+#########################
+
+# Example of run in FSL
+command <- paste(fslpath, 'flameo --cope=COPE --vc=VARCOPE --mask=mask --ld=FSL_stats --dm=design.mat       --cs=design.grp --tc=design.con --runmode=flame1', sep='')
+Sys.setenv(FSLOUTPUTTYPE="NIFTI")
+system(command)
+
+#########################
+## ETC ETC SEE var_2lvl.R
+#########################
+```
+
+
+> Note, we simulate all actual data in the var_2lvl.R script.
+
+## True Values
+
+Before we go to the results, we first calculate the true values.
+We will do this for the two-stage model formulation as the variance estimation of the random effects model is complicated (it involves taking the inverse of the full observation matrix which is too large).
+The two-stage model for a simplified (one predictor) GLM is defined as:
+
+\begin{align}
+Y_{it} & = \beta_0 + \beta_1X + \varepsilon_{it}, \quad i = 1, \dots, N \quad \text{and} \quad t = 1, \dots, T.
+\end{align}
+In the second stage, we get:
+\begin{align}
+Y_{G} & = \beta^*_1X_G + \varepsilon^*, 
+\end{align}
+where $Y_G$ is the vector of estimated first level parameters ($\hat{\beta_1}$) and $X_G$ equals a column of 1's with length $N$. In this case, $\varepsilon^* \sim N(0, \sigma_b^2 + \text{Var}(\widehat{\beta_1}))$. Denote $\sigma_G^2$ as $\text{Var}(\varepsilon^*)$ and note that is a mixed error component containing both variability of the estimation at the first level and a between-subject variability component $\sigma_b^2$. 
+
+Furthermore, we have:
+\begin{align}
+\text{Var}(\widehat\beta_1) = \frac{\widehat\sigma_e^2}{\sum_{t = 1}^T (X_t - \overline{X})^2}
+\end{align}
+
+Finaly, we find the variance of the estimated group level parameters (Var($\beta^*_1$)) combining the equations from above:
+\begin{align}
+\text{Var}(\beta^*_1) & = \frac{\sigma^2_b + \frac{\sigma_e^2}{\sum_{t = 1}^T (X_t - \overline{X})^2}}{\sum_{i = 1}^N (X_{Gi} - \overline{X_G})^2} \\
+& = \frac{\sigma^2_b + \frac{\sigma_e^2}{\sum_{t = 1}^T (X_t - \overline{X})^2}}{N}
+\end{align}
+
+In **R**, this is:
+
+```{r}
+X_G <- matrix(1, nrow = nsub, ncol = 1)
+trueVarBetaG <- c((sigma_b2^2 + (sigma_eps^2 / sum((X_s - mean(X_s))^2))) / nsub)
+trueVarBetaG
+#(sigma_b2^2 + sigma_eps^2 ) / nsub
+#diag(sigma_b2^2, nsub)
+```
+
+
+# Results
+
+Here, we read in the simulation results.
+
+```{r 'read-in-data'}
+allDat <- data.frame() %>% as.tibble()
+# For loop over the batches
+for(i in 1:IDs){
+  allDat <- bind_rows(allDat,
+  readRDS(file = paste(RawDat, 'Results_bsub_',sigma_b2[1],'/VAR2LVL_',i,'.rda', sep = '')) %>%
+    mutate(True_SD_bsub = sigma_b2[1]),
+  readRDS(file = paste(RawDat, 'Results_bsub_',sigma_b2[2],'/VAR2LVL_',i,'.rda', sep = '')) %>%
+    mutate(True_SD_bsub = sigma_b2[2]),
+  readRDS(file = paste(RawDat, 'Results_bsub_',sigma_b2[3],'/VAR2LVL_',i,'.rda', sep = '')) %>%
+    mutate(True_SD_bsub = sigma_b2[3])
+  )
+}
+```
+
+We can now check:
+
+* the average of the $\beta_1$ estimates, should be ```r BOLDC```
+* the empirical variance of the $\beta_1$ estimates (variance over Monte-Carlo simulations)
+* the average of the estimated variance of $\beta_1$ (average over simulations of $Var(\beta_1$)). This should approach ```r ((design_factor * sigma_eps^2) + sigma_b2^2) / nsub```, depending on the true value of $\sigma^2_b$.
+* the average estimated between-subject variability. In FSL this is the file *mean_random_effects_var1*, with **R** this is the estimated term from *lmer*. It should approach ```r sigma_b2```.
+* the empirical coverage of the 95% CI around the true value of $\beta_1$.
+
+
+```{r 'check-variance', results = 'asis'}
+allDat %>% group_by(type, True_SD_bsub) %>%
+  summarise(Avg_beta = mean(estimate),
+            Obs_var_beta = var(estimate),
+            Avg_var_beta = mean(variance),
+            Avg_sd_bsub = mean(SD_bsub),
+            EC = mean(EC)) %>%
+  mutate(TrueVar_beta = trueVarBetaG) %>%
+  #Re-arrange
+  ungroup() %>%
+  dplyr::select(type, True_SD_bsub, Avg_sd_bsub, Avg_beta, TrueVar_beta, Obs_var_beta,
+                Avg_var_beta,EC) %>%
+  # Print to table
+  kable(., caption = 'Results of Monte-Carlo simulation study', digits = 3)
+```
+
+
+Not sure if the true variance is correct...
+
+
+# Session
+
+```{r 'session'}
+sessionInfo()
+```
+
+
+
+```{r 'test', echo = FALSE, eval = FALSE}
+First we re-write the linear mixed model as:
+$$
+Y_i = \beta_0 + \beta_1X + b_{0i} + b_{1i}X + \varepsilon_i,
+$$
+where 
+$$
+\begin{bmatrix}
+b_{0i} \\ 
+b_{1i}
+\end{bmatrix} \sim N(0, D),
+\text{ with }
+D = \begin{bmatrix}
+1 & 0 \\ 0 & \sigma^2_{b}
+\end{bmatrix}
+$$
+and 
+$$
+\varepsilon_{i} \sim N(0, \sigma^2_e)
+$$
+
+The variance-covariance matrix of the parameter estimates is equal to:
+$$
+\text{var}(\hat\beta) = \sigma^2(ZDZ') + \sigma^2_eI,
+$$
+where $Z$ is the random effects design matrix (group membership).
+
+
+Z <- matrix(rep(Y$sub, 2), ncol = 2)
+#Z <- matrix(rep(1:nsub))
+H <- sigma_eps * (Z %*% var_cov_D %*% t(Z)) + matrix(sigma_eps, 
+                                                     ncol = nsub * nscan, 
+                                                     nrow = nsub * nscan)
+
+trueVarBetaLvl1 <- (design_factor * sigma_eps^2)
+design_factor_grp <- solve(t(matrix(1, nrow = nsub, ncol = 1)) %*% matrix(1, nrow = nsub, ncol = 1))
+trueVar_2lvl <- trueVarBetaLvl1 + sigma_b2^2
+trueVarBetaLvl2 <- design_factor_grp * trueVar_2lvl
+
+```
+
+
