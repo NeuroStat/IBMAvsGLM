@@ -103,9 +103,7 @@ We will save the estimated parameters for a number of subjects in the Monte-Carl
 &\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\hat\beta_m}{M} & \approx \text{E}(\hat\beta) & \\ \nonumber
 & & & = \beta = 3 \\
 &\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\widehat{\text{Var}(\beta_m)}}{M} & \approx \text{E}(\widehat{\text{Var}(\beta)}) & \\ \nonumber
-& & & = \sigma^2(X'X)^{-1} = 100^2(X'X)^{-1} \\
-&\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\text{t}}{M} & \approx \text{E}(\text{t}_m) & \\ \nonumber
-& & & = \frac{\hat\beta}{\sqrt{\text{Var}(\hat\beta)}}
+& & & = \sigma^2(X'X)^{-1} = 100^2(X'X)^{-1} 
 \end{align}
 
 
@@ -135,9 +133,7 @@ We will save the estimates for $\beta_G$ and its variance of each study in one m
 & & & = \beta^* = \beta = 3 \\
 &\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\widehat{\text{Var}(\beta_m^{*})}}{M} & \approx \text{E}(\widehat{\text{Var}(\beta^{*})}) & \\ \nonumber
 & & & = \sigma^{*2}(X_G'X_G)^{-1} \\ \nonumber
-& & & = \sigma^2(X'X)^{-1} (X_G'X_G)^{-1} \\
-&\Leftrightarrow\quad &\sum_{m = 1}^M \frac{\text{t}_m^{*}}{M} & \approx \text{E}(\text{t}^{*}) & \\ \nonumber
-& & & = \frac{\hat\beta^{*}}{\sqrt{\text{Var}(\hat\beta^{*})}}
+& & & = \sigma^2(X'X)^{-1} (X_G'X_G)^{-1} 
 \end{align}
 
 Note that $(X_G'X_G)^{-1}$ will be fixed as we always have the same amount of subjects. It is equal to ```r solve(t(matrix(1, nrow = 29)) %*% matrix(1, nrow = 29))```
