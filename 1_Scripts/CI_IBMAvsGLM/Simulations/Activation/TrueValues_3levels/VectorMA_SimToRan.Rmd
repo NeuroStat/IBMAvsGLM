@@ -1,0 +1,536 @@
+---
+title: "Simple GLM to mixed model: distribution of standardized mean effect"
+author: "Han Bossier"
+date: "15/2/2018"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    df_print: tibble
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	comment = NA,
+	cache = FALSE,
+	warning = FALSE,
+	fig.align='center'
+)
+
+# Libraries
+library(tidyverse)
+library(Matrix)
+library(neuRosim)
+library(NeuRRoStat)
+
+# Extra functions: first correction factor h
+corrH <- function(N){
+  num <- gamma((N - 1)/2)
+  denom <- (sqrt((N - 1)/2) * gamma((N - 2)/2))
+  return(num/denom)
+}
+
+# Variance of d
+varD <- function(d, N){
+  (N - 1)/((N - 3)*N)*(1 + (delta**2*N)) - (delta**2/corrH(N)**2)
+}
+```
+
+\pagebreak
+
+# Introduction
+
+Introduce. For final report: change number of simulations!
+
+First note the following two factors:
+\begin{align}
+J & = \left(1 - \frac{3}{4(n - 1) - 1} \right) \\[12pt]
+h & = \dfrac{\Gamma\left(\dfrac{N - 1}{2}\right)}{\sqrt{\frac{N - 1}{2}}\Gamma\left(\dfrac{N - 2}{2} \right)}.
+\end{align}
+
+Now let us assume we have a univariate response variable $Y \sim N(\mu, \sigma)$. Furthermore denote $N$ as the sample size. Then, we have:
+\begin{align}
+\delta & = \frac{\mu}{\sigma} \\
+d & = \frac{\overline{Y}}{S} \\
+g & = d \times J \\
+g^c & = d \times h.
+\end{align}
+
+
+As well as:
+\begin{align}
+\text{Var}(d) & = \frac{(N - 1)(1 + N\delta^2)}{N(N - 3)} - \frac{\delta^2}{h^2} \\[12pt]
+\text{Var}(g) & = J^2 \times \text{Var}(d) \\[12pt]
+\text{Var}(g^c) & = h^2 \times \text{Var}(d).
+\end{align}
+
+We know that:
+\begin{align}
+\text{E}(d) & = \frac{\mu}{\sigma} \times h^{-1} \\[12pt]
+& = \delta \times h^{-1}
+\end{align}
+
+## General parameters
+
+```{r 'global-variables'}
+# Number of simulations
+nsim <- 1000
+
+# Number of participants
+nsub <- 20
+
+# Seed
+set.seed(exp(pi) * pi)
+```
+
+
+# Simple model without intercept
+
+Setting.
+
+## Data generation
+
+$$
+Y_i = \beta_1X + \varepsilon_i, \quad i = 1, \dots, N
+$$
+with $\beta_1 = 3$, $X = 1$, $\varepsilon \sim N(0, \sigma^2)$ and $\sigma = 4$.
+
+
+```{r 'simple-model-no-intercept'}
+# Parameters for this section
+mu <- 3
+sigma <- 4
+delta <- mu/sigma
+beta1 <- mu
+X <- 1
+
+# Empty vectors
+d <- g <- gc <- varsD <- varsG <- varsGC <- vector()
+
+# Start for loop
+for(i in 1:nsim){
+  # Generate N datapoints (Y)
+  Y <- beta1*X + rnorm(nsub, 0, sigma)
+  
+  # Estimate standardized effects
+  d_sim <- mean(Y)/sd(Y)
+  d <- c(d, d_sim)
+  g <- c(g,
+         d_sim * corrJ(nsub))
+  gc <- c(gc, 
+          d_sim * corrH(nsub))
+  
+  # Estimated variance
+  varsD <- c(varsD,
+             varD(d = d_sim, N = nsub))
+  varsG <- c(varsG,
+             varD(d = d_sim, N = nsub) * corrJ(N = nsub)**2)
+  varsGC <- c(varsGC,
+             varD(d = d_sim, N = nsub) * corrH(N = nsub)**2)
+ 
+  # Reset d_sim
+  rm(d_sim)
+}
+```
+
+## Monte-Carlo simulation results
+
+```{r 'expectations-simple-model'}
+options(scipen = 5)
+expec <- data.frame('Parameter' = c('Cohen d', 'Hedges g', 'Unbiased Hedges g'),
+           'Estimate' = c(mean(d), mean(g), mean(gc)),
+           'SD' = c(sd(d), sd(g), sd(gc)),
+           'TrueValue' = delta)
+knitr::kable(expec %>% mutate(StanBias = (Estimate - TrueValue)/SD) %>%
+  mutate(MSE = c(
+    (var((d - delta)**2) * (nsim - 1) / nsim),
+    (var((g - delta)**2) * (nsim - 1) / nsim),
+    var((gc - delta)**2) * (nsim - 1) / nsim)) %>%
+  select(-SD) %>%
+  mutate('Avg(Var(theta))' =
+           c(mean(varsD), mean(varsG), mean(varsGC))))
+```
+
+
+# Single subject GLM with BOLD response
+
+Generate time series for one subject, where $t$ is used to denote the scan in the time series. We now use following the following linear model in one voxel:
+$$
+Y_t = \beta_0 + \beta_1X + \varepsilon_t, \quad t=1, \dots, T.
+$$
+Here, $X$ is a design matrix obtained by convoluting an ON/OFF blocked design with a canonical HRF. Furthermore, set $\beta_0 = 100$, $\beta_1 = 3$, $\varepsilon \sim N(0, \sigma^2)$ and $\sigma = 100$. 
+
+
+```{r 'true-BOLD'}
+# Parameters for this section
+mu <- 3
+sigma <- 100
+delta <- mu/sigma
+beta0 <- 100
+beta1 <- mu
+
+
+# Signal characteristics
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+onsets <- list(on1)
+duration <- list(20)
+
+# Generating a design matrix: convolution of block design with double-gamma HRF
+X <- neuRosim::simprepTemporal(total,1,onsets = onsets,
+                               effectsize = 1, durations = duration,
+                               TR = TR, acc = 0.1, hrf = "double-gamma")
+
+# X vector for one subject = predicted signal
+X_s <- neuRosim::simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
+
+# Plot
+par(mfrow = c(1,2))
+plot(X_s, type = 'l', main = 'design matrix', 
+     sub = expression(Refer ~ to ~ GLM ~ as ~ X), 
+     ylab = 'Expected BOLD',
+     xlab = 'Time')
+plot(beta0 + beta1 * X_s, type = 'l', main = 
+       paste0('true signal with: \n ', beta1,'% BOLD change'), 
+     sub = expression(Refer ~ to ~ GLM ~ as ~ beta[0] + beta[1] * X),
+    ylab = 'BOLD', xlab = 'Time')
+```
+
+## Data generation
+
+Let us now generate data. We estimate the standardized effect of **each** single subject through:
+$$
+d = \frac{\hat\beta_1}{\sigma},
+$$
+where $\sigma$ corresponds to the estimated residual standard error obtained by fitting the GLM. That is:
+$$
+\hat\sigma = \sqrt{\sum_{t = 1}^T\frac{(Y - \hat Y)^2}{T - 1}}
+$$
+
+We know also have:
+$$
+g = d \times J
+$$
+and 
+$$
+g^c = d \times h.
+$$
+However, note that both $J$ and $h$ (and by extension the variance of the standardized effects) now depend on the number of scans (= 200) as sample size. 
+```{r 'generate-BOLD-single-subject'}
+# Empty vectors
+d <- g <- gc <- varsD <- varsG <- varsGC <- vector()
+
+# Start simulation for loop
+for(i in 1:nsim){
+  # Generate data
+  Y <- beta0 + beta1*X_s + rnorm(n = nscan, mean = 0, sd = sigma)
+  
+  # Fit GLM
+  estBeta1 <- lm(Y ~ X_s)$coef['X_s']
+  estSigma <- summary(lm(Y ~ X_s))$sigma
+
+  # Estimate standardized effects
+  d_sim <- estBeta1/estSigma
+  d <- c(d, d_sim)
+  g <- c(g,
+         d_sim * corrJ(nscan))
+  gc <- c(gc, 
+          d_sim * corrH(nscan))
+  
+  # Estimated variance
+  varsD <- c(varsD,
+             varD(d = d_sim, N = nscan))
+  varsG <- c(varsG,
+             varD(d = d_sim, N = nscan) * corrJ(N = nscan)**2)
+  varsGC <- c(varsGC,
+             varD(d = d_sim, N = nscan) * corrH(N = nscan)**2)
+ 
+  # Reset d_sim
+  rm(d_sim)
+}
+```
+
+
+## Monte-Carlo simulation results
+
+Again, we look at the results. The true value is now:
+$$
+\delta = \frac{\mu}{\sigma} = \frac{3}{100} = 0.03.
+$$
+
+```{r 'expectations-single-BOLD'}
+options(scipen = 5)
+expec <- data.frame('Parameter' = c('Cohen d', 'Hedges g', 'Unbiased Hedges g'),
+           'Estimate' = c(mean(d), mean(g), mean(gc)),
+           'SD' = c(sd(d), sd(g), sd(gc)),
+           'TrueValue' = delta)
+knitr::kable(expec %>% mutate(StanBias = (Estimate - TrueValue)/SD) %>%
+  mutate(MSE = c(
+    (var((d - delta)**2) * (nsim - 1) / nsim),
+    (var((g - delta)**2) * (nsim - 1) / nsim),
+    var((gc - delta)**2) * (nsim - 1) / nsim)) %>%
+  select(-SD) %>%
+  mutate('Avg(Var(theta))' =
+           c(mean(varsD), mean(varsG), mean(varsGC))),
+  digits = 4)
+```
+
+Note that results are close to each other as number of scans is high. This is demonstrated in the following plot:
+
+```{r 'bias-d', fig.height = 4}
+CorrFactor <- data.frame('df' = 3:100, 
+           'CorrectionF' = rep(c('J', 'h'), each = length(3:100)),
+           'Value' = c(corrJ(3:100),
+              corrH(3:100)))
+
+ggplot(CorrFactor, aes(x = df, y = Value)) + 
+  geom_line(colour = 'black', size = 1) +
+  #geom_line(colour = '#0570b0', size = 1) +
+  scale_x_continuous('Degrees of freedom', 
+                      minor_breaks = seq(10, 200, by = 5)) +
+  scale_y_continuous(expression(delta/E(d))) +
+  # ggtitle("Induced bias using Cohen's d",
+  #         subtitle = 'True expectation (h) versus approximation (J)') +
+  facet_grid(~ CorrectionF) + 
+  theme_bw()
+```
+
+
+
+# Group study of BOLD responses
+
+In this section, we generate time series for each subject and then combine all subjects into a group analysis. Standardized mean effects are then calculated at the group level instead of at individual subject level. 
+We shall explore two simulation approaches. The first one is a mixed model where we generate data in one stage (within and between subjects). In the section thereafter, we will generate and analyse data using the typical two-stage approach. 
+
+## Full mixed model approach
+
+$$
+Y_{it} = \beta_0 + \beta_1^*XX_G + X\varepsilon^*_i +\varepsilon_{it}, \quad i = 1, \dots, N \quad \text{and} \quad t = 1, \dots, T.
+$$
+
+```{r}
+# Extend the design matrix with the intercept
+xIN <- cbind(1,X_s)
+
+Xblock <- as.matrix(bdiag(rep(list(X_s), nsub)))
+dim(Xblock)
+a <- Xblock %*% Xg * beta1 
+dim(a)
+
+beta0 + X_s * Xg * beta1
+
+sigmaBlock <- as.matrix(bdiag(rep(list(
+  rnorm(n = nscan, mean = 0, sd = sigma)), nsub)))
+dim(sigmaBlock)
+Xblock %*% rep(eta, nsub) + sigmaBlock
+dim(Xblock %*% rep(eta, nsub))
+
+
+b <- Xblock %*% rep(eta, nsub) %*% t(Xblock)
+dim(Xblock %*% rep(eta, nsub))
+dim(t(Xblock))
+```
+
+
+## Two stage approach
+The group analysis consists of fitting a GLM on the estimated first-level parameters (for each subject) using OLS.
+Hence we have:
+\begin{align}
+Y_{it} & = \beta_0 + \beta_1X + \varepsilon_{it}, \quad i = 1, \dots, N \quad \text{and} \quad t = 1, \dots, T.
+\end{align}
+Note that we assume no autocorrelation in $\text{Var}(\varepsilon) = \sigma^2$. In the second stage, we get:
+\begin{align}
+Y_{G} & = \beta^*_1X_G + \varepsilon^*, 
+\end{align}
+where $Y_G$ is the vector of estimated first level parameters ($\hat{\beta_1}$) and $X_G$ equals a column of 1's with length $N$. In this case, $\varepsilon^* \sim N(0, \eta^2 + \text{Var}(\widehat{\beta_1}))$. Denote $\sigma_G^2$ as $\text{Var}(\varepsilon^*)$ and note that is a mixed error component containing both variability of the estimation at the first level and a between-subject variability component $\eta^2$. For now, we assume $\eta = 0$.
+
+Furthermore, we have:
+\begin{align}
+\text{Var}(\widehat\beta_1) = \frac{\widehat\sigma^2}{\sum_{t = 1}^T (X_t - \overline{X})^2}
+\end{align}
+
+In matrix notation, this is:
+\begin{align}
+\text{Var}(\boldsymbol\beta) = \widehat\sigma^2(\mathbf{X}'\mathbf{X})^{-1},
+\end{align}
+where $\mathbf{X}$ is the matrix containing both the intercept and the convoluted design. The diagonal of $\text{Var}(\boldsymbol\beta)$ then gives the variances of the estimated parameters.
+
+### Generate data
+
+```{r 'two-stage-data-generation'}
+# Parameters for this section
+mu <- 3
+sigma <- 25
+beta0 <- 100
+beta1 <- mu
+
+# Between-subject variability
+eta <- 1
+
+# Empty vectors
+d <- g <- gc <- varsD <- varsG <- varsGC <- vector()
+
+# Start simulation for loop
+for(i in 1:nsim){
+  
+  # Vector of estimated beta parameters
+  estBeta <- vector()
+  
+  # For loop over the subjects
+  for(s in 1:nsub){
+    # Time series for this subject
+    Y_s <- beta0 + beta1*X_s + rnorm(n = nscan, mean = 0, sd = sigma)
+    
+    # Estimated beta1 for this subject
+    estBeta1_s <- lm(Y_s ~ X_s)$coef['X_s']
+    
+    # In vector
+    estBeta <- c(estBeta, as.numeric(estBeta1_s))
+  }
+  
+  # Add between-subject variability (eta can be zero as well)
+  Yg <- estBeta + rnorm(n = nsub, mean = 0, sd = eta)
+  
+  # Fit GLM at group level
+  estBetaStar1 <- lm(Yg ~ 1)$coef['(Intercept)']
+  estSigmaStar <- summary(lm(Yg ~ 1))$sigma
+  
+  # Estimate standardized effects
+  d_sim <- as.numeric(estBetaStar1/estSigmaStar)
+  d <- c(d, d_sim)
+  g <- c(g,
+         d_sim * corrJ(nsub))
+  gc <- c(gc, 
+          d_sim * corrH(nsub))
+  
+  # Estimated variance
+  varsD <- c(varsD,
+             varD(d = d_sim, N = nsub))
+  varsG <- c(varsG,
+             varD(d = d_sim, N = nsub) * corrJ(N = nsub)**2)
+  varsGC <- c(varsGC,
+             varD(d = d_sim, N = nsub) * corrH(N = nsub)**2)
+  
+  # Reset
+  rm(d_sim, Yg, estBetaStar1, estSigmaStar)
+}
+```
+
+#### Note on data generation
+
+To induce between-subject variability (when $\eta > 0$), we can either generate a specific $\beta_{1i}$ for each subject $i$:
+```{r 'beta-subject', eval = FALSE}
+for(s in 1:nsub){
+  # Random beta1 for this subject
+  beta1S <- rnorm(n = 1, mean = beta1, sd = 0)
+    
+  # Time series for this subject
+  Y_s <- beta0 + beta1S*X_s + rnorm(n = nscan, mean = 0, sd = sigma)
+  
+  # Estimated beta1 for this subject
+  estBeta1_s <- lm(Y_s ~ X_s)$coef['X_s']
+  
+  # In vector
+  estBeta <- c(estBeta, as.numeric(estBeta1_s))
+}
+Yg <- estBeta
+```
+
+Or we could take the vector of first-level responses ($\widehat{\beta}_{1i}$) and induce variability here:
+```{r 'b-sub-var-two-stage', eval = FALSE}
+for(s in 1:nsub){
+  # Time series for this subject
+  Y_s <- beta0 + beta1*X_s + rnorm(n = nscan, mean = 0, sd = sigma)
+  
+  # Estimated beta1 for this subject
+  estBeta1_s <- lm(Y_s ~ X_s)$coef['X_s']
+  
+  # In vector
+  estBeta <- c(estBeta, as.numeric(estBeta1_s))
+}
+# Add between-subject variability (eta can be zero as well)
+Yg <- estBeta + rnorm(n = nsub, mean = 0, sd = eta)
+```
+
+The first approach suggests a random slope approach, while the second matches more closely the two-stage fMRI notation.
+
+### Monte-Carlo simulation results
+
+We now have the true standardized mean effect at the group level as:
+\begin{align}
+\delta & = \frac{\mu}{\sigma_G^*} \\
+& = \frac{\beta^*_1}{\sigma_G^*} \\
+& = \frac{\beta^*_1}{\sqrt{\eta^2 + \sigma^2(X'X)^{-1}}}
+\end{align}
+Note that $\delta$ defined at the group level now depends on the design matrix of the first level. Furthermore note that the second element of the diagonal on $(\mathbf{X}'\mathbf{X})^{-1}$ equals:
+$$
+\text{diag}(\mathbf{X}'\mathbf{X})^{-1}_2 = \frac{1}{\sum_{t = 1}^T(X_t - \overline X)^2}
+$$
+as is demonstrated:
+```{r 'diag-matrix'}
+diag(solve(t(xIN)%*%xIN))[2]
+1/(var(X_s) * (nscan - 1))
+```
+
+Let us now look at the Monte-Carlo simulation results.
+```{r 'expectations-two-stage-results'}
+# True values
+varBeta1 <- sigma^2 * diag(solve(t(xIN)%*%xIN))[2]
+delta <- mu/(sqrt(eta + varBeta1))
+
+expec <- data.frame('Parameter' = c('Cohen d', 'Hedges g', 'Unbiased Hedges g'),
+           'Estimate' = c(mean(d), mean(g), mean(gc)),
+           'SD' = c(sd(d), sd(g), sd(gc)),
+           'TrueValue' = as.numeric(delta))
+knitr::kable(expec %>% mutate(StanBias = (Estimate - TrueValue)/SD) %>%
+  mutate(MSE = c(
+    (var((d - delta)**2) * (nsim - 1) / nsim),
+    (var((g - delta)**2) * (nsim - 1) / nsim),
+    var((gc - delta)**2) * (nsim - 1) / nsim)) %>%
+  select(-SD) %>%
+  mutate('Avg(Var(theta))' =
+           c(mean(varsD), mean(varsG), mean(varsGC))),
+  digits = 4)
+```
+
+
+
+
+
+
+
+
+
+```{r 'MC-two-stage-results', eval=FALSE, echo = FALSE}
+## Design parameters
+# Extend the design matrix with the intercept
+xIN <- cbind(1,X_s)
+
+# Contrast: not interested in intercept
+CONTRAST <- matrix(c(0,1),nrow=1)
+
+# Calculate (X'X)^(-1) with contrast
+design_factor <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST)
+
+# Two ways to calculate var(beta_1)
+sigma**2 * solve(t(xIN)%*%xIN)
+sigma**2/(var(X_s) * (nscan - 1))
+
+
+solve(t(matrix(X_s, ncol = 1)) %*% matrix(X_s, ncol = 1))
+1/(var(X_s) * (nscan - 1))
+
+solve(t(matrix(rep(1, nsub), ncol = 1)) %*% matrix(rep(1, nsub), ncol = 1))
+
+```
+
+
+
