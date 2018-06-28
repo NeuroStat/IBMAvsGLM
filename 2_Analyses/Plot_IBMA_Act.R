@@ -148,7 +148,7 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM), each = length(TrueParam$TrueG))) 
     # Then bind columns
     do.call("rbind", replicate(prod(DIM), data.frame(TrueParam), 
                       simplify = FALSE))) %>% as.tibble(.) %>%
-  select(-Nsub) %>%
+  dplyr::select(-Nsub) %>%
   # Join smoothed area vector to dataframe
   left_join(., SmGT_v, by = 'voxID') %>%
   # Multiply TrueG with Smoothed value to obtain smoothed Hedges' g
@@ -157,7 +157,7 @@ SmParam <- data.frame(voxID = rep(1:prod(DIM), each = length(TrueParam$TrueG))) 
   mutate(TrueCOPE = trueMCvalues('sim_act', 'BOLDC'),
          SmoothCOPE = TrueCOPE * Smooth) %>%
   # Drop tau
-  select(-Tau)
+  dplyr::select(-Tau)
   
 
 ##
@@ -245,7 +245,7 @@ if(!RAWDATA){
     # Rename coverage to wSimCoverage
     rename(wSimCoverage = coverage, wSimSDCov = sdCov) %>%
     # Drop wSIMSDCov (not interested in)
-    select(-wSimSDCov) %>%
+    dplyr::select(-wSimSDCov) %>%
     # Summarise over simulations
     group_by(parameter, TrueD, tau, nstud) %>%
     summarise(coverage = mean(wSimCoverage),
