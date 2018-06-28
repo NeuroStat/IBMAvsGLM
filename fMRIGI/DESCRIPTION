@@ -1,6 +1,6 @@
 Package: fMRIGI
 Type: Package
-Title: Custom functions/data for the IBAM versus GLM project.
+Title: Custom functions/data for the GLM versus IBMA project.
 Version: 0.1.0
 Author: Han Bossier
 Maintainer: Han Bossier <Han.Bossier@Ugent.be>
