@@ -19,7 +19,8 @@
 # GLM to an ES and calculate a weighted average using a random effects MA model.
 # This is compared with a third level GLM, mixed effects model.
 
-# Activation and between study heterogeneity is added.
+# Activation and between study heterogeneity is added by using the I^2
+# statistic.
 
 
 # MEASURES:
@@ -122,14 +123,14 @@ MAvsIBMAres <- tibble(sim = integer(),
 ##
 
 # Function to gather results into tibbles
-GetTibble <-function(data, nameParam, sim, DIM, sigma, tau, nstud, tdof_t1){
+GetTibble <-function(data, nameParam, sim, DIM, sigma, eta, nstud, tdof_t1){
   gather_data <- data.frame('sim' = as.integer(sim),
                             'voxel' = as.vector(1:prod(DIM)),
                             'value' = matrix(data, ncol = 1),
                             'parameter' = factor(nameParam,
                                                  levels = levels(saveParam)),
                             'sigma' = sigma,
-                            'tau' = tau,
+                            'eta' = eta,
                             'nstud' = nstud,
                             'FLAMEdf_3' = tdof_t1)
   return(as.tibble(gather_data))
@@ -165,7 +166,7 @@ duration <- trueMCvalues('sim_act', 'duration')
 #   and the amount of noise within subjects to achieve these ES.
 BOLDC <- trueMCvalues('sim_act', 'BOLDC')
 
-# Base of signal
+# Base of signal (i.e. intercept)
 base <- trueMCvalues('sim_act', 'base')
 
 # Spatial smoothing of signal
@@ -183,9 +184,18 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 # Sigma of white noise: high, medium and low amount of noise
 whiteSigma_vec <- trueMCvalues('sim_act', 'TrueSigma')
 
+# We estimated the amount of between-study heterogeneity using the I^2
+#   statistic. This is the amount of between-study hereogeneity in relation to 
+#   total variability. 
+I2_vec <- trueMCvalues('sim_act', 'I2')/100
+
+# Let us denote the amount of between-study variability in the GLM notation as eta^2
+#   Hence we assume: I^2 = (eta**2)/(eta**2 + whiteSigma**2)
+eta2_vec <- (I2_vec * whiteSigma_vec**2)/(1-I2_vec)
+eta_vec <- sqrt(eta2_vec)
 
 # Vector of between study variability
-Tau_vec <- c(0, 36, 94)
+# Tau_vec <- c(0, 36, 94)
   #trueMCvalues('sim_act', 'Tau')
 
 # Change number of studies in the MA.
@@ -200,7 +210,7 @@ Noise <- list(
 
 # Data frame with combinations
 ParamComb <- expand.grid('whiteSigma' = whiteSigma_vec,
-                         'tau' = Tau_vec,
+                         'eta' = eta_vec,
                          'nstud' = nstud_vec)
 NumPar <- dim(ParamComb)[1]
 
@@ -254,7 +264,7 @@ for(p in 1:NumPar){
 
   # Select studies, amount of white noise and between-study variability
   whiteSigma <- ParamComb[p, 'whiteSigma']
-  tau <- ParamComb[p, 'tau']
+  eta <- ParamComb[p, 'eta']
   nstud <- ParamComb[p, 'nstud']
 
   # Empty vectors
@@ -264,10 +274,10 @@ for(p in 1:NumPar){
   # For loop over studies
   for(t in 1:nstud){
   print(paste('At study ', t, ', parameter ', p, ' in simulation ', K, sep=''))
-    # Create the delta: subject specific true effect, using tau as between-study
+    # Create the delta: subject specific true effect, using eta as between-study
     #   heterogeneity.
     # This is done by generating a study specific BOLD signal at center of activation.
-    BOLDCS <- BOLDC + rnorm(n = 1, sd = tau)
+    BOLDCS <- BOLDC + rnorm(n = 1, mean = 0, sd = eta)
     
     # Need to be in correct scale
     signal_BOLDCS <- BOLDCS * (pred-base) + base
