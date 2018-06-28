@@ -131,7 +131,7 @@ X_s <- neuRosim::simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
 
 ## Design parameters
 # Extend the design matrix with the intercept
-xIN <- cbind(base,X_s)
+xIN <- cbind(1,X_s)
 
 # Contrast: not interested in intercept
 CONTRAST <- matrix(c(0,1),nrow=1)
