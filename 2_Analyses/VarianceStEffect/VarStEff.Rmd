@@ -1,0 +1,209 @@
+---
+title: "Variance of a standardized mean effect"
+author: "Han Bossier"
+date: "14/2/2018"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    df_print: tibble
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	comment = NA,
+	cache = FALSE,
+	warning = FALSE,
+	fig.align='center'
+)
+
+# Libraries
+library(NeuRRoStat)
+```
+
+\pagebreak
+
+# Variance of standardized mean effect
+
+Consider $\delta = \frac{\mu}{\sigma}$ and its estimator:
+$$
+d = \frac{\overline Y}{S},
+$$
+where $S$ is the square root of the unbiased sample variance. We are focussing on one study with sample size $N$. We estimate the standardized mean effect and its variance.
+
+We know that:
+$$
+d = \frac{1}{\sqrt{n}} \left[ \frac{\mathcal{Z} + \sqrt{n} \delta }{\sqrt{\frac{V}{\nu}}} \right],
+$$
+where $\mathcal{Z} \sim N(0,1)$, $V$ is a Chi-squared random distributed variable and $\nu = N - 1$.
+
+From the expression above, we see that $d$ equals $\frac{1}{\sqrt{n}}$ times a non-central $t$-distributed random variable with $n - 1$ degrees of freedom and $\sqrt{n}\delta$ as the non-centrality parameter.
+
+We shall now calculate the variance of $d$, using the second moment of a non-central $t$-distribution. Before doing so, we first define some functions.
+
+## Second moment of a non-central t-distribution
+
+The second moment of a random distributed $T$-variable is defined as:
+$$
+\text{Var}(T) = \dfrac{\nu(1 + \theta^2)}{\nu - 2} - \dfrac{\theta^2\nu}{2}\left(\dfrac{\Gamma((\nu - 1)/2)}{\Gamma(\nu/2)} \right)^2,
+$$
+if $\nu > 2$. Note that we use $\theta$ for the non-centrality parameter.
+
+## Parameters
+
+Let us define $N$ and $\delta$:
+
+```{r 'parameters'}
+N <- 20
+delta <- 0.8
+```
+
+
+# Functions
+
+Function to use in second moment of non-central t-distribution:
+
+$$
+FU = \dfrac{\Gamma\left(\dfrac{N - 2}{2}\right)}{\Gamma\left(\dfrac{N - 1}{2} \right)}
+$$
+
+```{r 'ratioGamma'}
+ratioGamma <- function(N){
+  num <- gamma((N - 2)/2)
+  denom <- gamma((N - 1) / 2)
+  return(num/denom)
+}
+```
+
+Function to calculate true correction factor (denoted as $h$):
+
+$$
+h = \dfrac{\Gamma\left(\dfrac{N - 1}{2}\right)}{\sqrt{\frac{N - 1}{2}}\Gamma\left(\dfrac{N - 2}{2} \right)}
+$$
+
+```{r 'TrueCorr'}
+TrueCorr <- function(N){
+  num <- gamma((N - 1)/2)
+  denom <- (sqrt((N - 1)/2) * gamma((N - 2)/2))
+  return(num/denom)
+}
+```
+
+Compare with $J$:
+
+$$
+J = \left(1 - \frac{3}{4(n - 1) - 1} \right)
+$$
+
+which is implemented in the **R** package ```NeuRRoStat```:
+```{r 'corrJ'}
+NeuRRoStat::corrJ
+```
+
+
+## Difference between h and J
+```{r 'diff-H-J', collapse = TRUE}
+NeuRRoStat::corrJ(10) - TrueCorr(10)
+NeuRRoStat::corrJ(N) - TrueCorr(N)
+```
+
+
+# Second moment of non-central t: plug in
+
+To start with, let us take the second moment of the non-central t-distribution and plug in $\nu = N - 1$ and $\theta = \sqrt{n}\delta$.
+
+```{r 'plug-in-t'}
+varA <- ((N-1) * (1 + N*delta**2))/(N - 3)
+varB <- ((N*delta**2*(N - 1))/2) * ratioGamma(N)**2
+1/N*(varA - varB)
+```
+
+
+# Version written in paper
+
+Compare the value from previous section with the formula given in the paper:
+
+$$
+\text{Var}(d) = \frac{1}{n}\left[ \frac{n^2\delta^2 - n\delta^2 + n - 1}{n - 3} \right] - \frac{\delta^2}{h^2},
+$$
+with $h$ defined earlier. 
+
+```{r 'form-paper'}
+PaperVarA <- 1/N*((N**2*delta**2 - N*delta**2+N-1)/(N-3))
+PaperVarB <- (delta**2)/(TrueCorr(N)**2)
+PaperVarA - PaperVarB
+```
+
+> Same value
+
+# Hedges 1981: biased effect size
+
+Now let us compare with the formula given by Hedges in 1981 for a two sample scenario, in which $N$ corresponds to the sample size of the control group (essentially the approach of Glass).
+
+$$
+\text{Var}(d) = \dfrac{N - 1}{(N - 1 - 2)N} \left[1 + N\delta^2 \right] - \frac{\delta^2}{h^2}.
+$$
+
+```{r 'var-G'}
+VarBiasedG <- (N - 1)/((N - 3)*N)*(1 + (delta**2*N)) - (delta**2/TrueCorr(N)**2)
+VarBiasedG
+```
+
+> Same value
+
+
+# Variance of unbiased estimator
+
+To calculate the unbiased estimator, we need to multiply $d$ with $J$ (for more details, see paper). Hence we have:
+$$
+g = d \times J
+$$
+and
+\begin{align*}
+\text{Var}(g) &= \text{Var}(d \times J) \\
+ &= \text{Var}(d) \times J^2
+\end{align*}
+
+```{r 'unbiased-variance'}
+VarBiasedG * (TrueCorr(N)**2)
+```
+
+
+# Radua
+
+Radua uses the following formula for the variance of $g$:
+
+\begin{align*}
+\text{Var}(g) &= \frac{1}{N} + \left[1 - \left( \dfrac{\Gamma\left(\frac{N - 2}{2}\right)}{\Gamma\left(\frac{N - 1}{2}\right)}\right)^2 \times \frac{N - 3}{2} \right] \times d^2 \\
+ &= \frac{(1 + d^2N)}{N} - \frac{d^2(N - 3)}{2} \times \left( \dfrac{\Gamma\left(\frac{N - 2}{2}\right)}{\Gamma\left(\frac{N - 1}{2}\right)}\right)^2
+\end{align*}
+
+
+```{r 'Radua-var-g'}
+((1 + delta**2*N)/N) - (((delta**2*(N - 3))/2) * ratioGamma(N)**2)
+```
+
+> Different value
+
+# Conclusion
+
+* Computationally, there is no need anymore to rely on an approximation $J$. Might as well use $h$. 
+* Radua uses a slightly different approach to obtain Var(g). I do not know which one. At the moment, I suggest using Var(g) as given by the second moment of the non-central t-distribution.
+
+
+
+
+
+
+
+
+
+
+
+
