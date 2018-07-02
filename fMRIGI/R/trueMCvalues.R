@@ -100,6 +100,23 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     # --- and 10% quantile for a low effect (0.14)
     TrueD <- c(0.14, 0.55, 1.02)
 
+    # Now we have in fMRI:
+    # Y = beta0 + beta1X + E (first level)
+    # Y_G = beta1*X_G + E* (second level)
+    # Hence Var(Y_G) = Var(E*) = sigma^2G = sigma^2_B + sigma^2(X'X)^(-1)
+    # Hence, the variance at second level is sum of between-subject variability (sigma^2_B)
+        # and imperfect first level intra-subject estimation variability (sigma^2 = white noise)
+    # Furthermore we have: d = beta/sigma_G
+    # So we get for sigma_G:
+    TrueSigmaG <- BOLDC/TrueD
+    # Now we want that sigma^2_B / sigma^2_W = 0.5.
+      # Work this out and you get:
+    TrueSigma2B <- TrueSigmaG^2/3
+    TrueSigma2W <- (2*TrueSigmaG^2 / 3) / c(design_factor)
+    # NOTE: TrueSigma2B corresponds to variance of the random slopes between-subjects
+    #   We also want a random intercept (B0), variance = 1
+    Trueb0_Bsub <- 1
+
     # Calculate values for sigma
     TrueSigma <- BOLDC/(TrueD * as.vector(sqrt(design_factor)))
 
@@ -107,6 +124,9 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     # 0th, 50th and 100th percentile of observed between-study variability
     Tau <- sqrt(c(0,0.10,0.495))
     I2 <- c(0, 62.61, 87.28)
+    # NOTE: tau^2 corresponds to variance of random slopes between-studies.
+      # Also add random intercept
+    Trueb0_Bstud <- 1
 
     # Hedges' g can be obtained by multiplying Cohen's d with the correction factor.
     TrueG <- TrueD * NeuRRoStat::corrJ(N = nsub)
