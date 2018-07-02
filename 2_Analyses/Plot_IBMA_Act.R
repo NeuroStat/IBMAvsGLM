@@ -334,7 +334,7 @@ CoveragePlot %>%
 CoveragePlot %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         etaL = paste('tau ~ "=" ~ ', round(eta, 2), sep = '')) %>%
+         etaL = paste('eta ~ "=" ~ ', round(eta, 2), sep = '')) %>%
   # 4) plot the results
   ggplot(., aes(x = nstud, y = coverage)) + 
   geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
