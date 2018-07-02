@@ -45,9 +45,9 @@ inptVar <- try(as.numeric(as.character(input)[4]),silent=TRUE)
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
-  hpcID <- 1
+  hpcID <- 104
   DataWrite <- '~/Desktop/VAR3LVL'
-  inptVar <- 1
+  inptVar <- 3
 }
 
 # Give path to FSL
@@ -497,8 +497,7 @@ for(ID in startIndex:endIndex){
 # Save R object
 saveRDS(comb_res, file = paste0(wd, 'Results_bsub_', sigma_b2, '_bstud_', sigma_eta2, '/VAR3LVL_', hpcID, '.rda'))
 
-# Reset
-rm(list = ls())
+
 
  
 

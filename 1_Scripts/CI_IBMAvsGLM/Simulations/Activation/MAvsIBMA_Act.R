@@ -36,10 +36,6 @@
 ##
 
 
-# Reset working directory
-rm(list=ls())
-gc(verbose = FALSE)
-
 # Take argument from master file
 input <- commandArgs(TRUE)
   # K'th simulation
@@ -94,6 +90,7 @@ library(tibble)
 library(reshape2)
 library(RColorBrewer)
 library(Hmisc)
+library(MASS)
 library(devtools)
 library(neuRosim)
 library(NeuRRoStat)
@@ -112,7 +109,7 @@ MAvsIBMAres <- tibble(sim = integer(),
                 value = numeric(),
                 parameter = saveParam,
                 sigma = numeric(),
-                tau = numeric(),
+                eta = numeric(),
                 nstud = numeric(),
                 FLAMEdf_3 = numeric())
 
@@ -167,7 +164,7 @@ duration <- trueMCvalues('sim_act', 'duration')
 BOLDC <- trueMCvalues('sim_act', 'BOLDC')
 
 # Base of signal (i.e. intercept)
-base <- trueMCvalues('sim_act', 'base')
+intcpt <- trueMCvalues('sim_act', 'base')
 
 # Spatial smoothing of signal
 fwhm <- trueMCvalues('sim_act', 'fwhm')
@@ -181,8 +178,18 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 #### Simulation parameters
 ##############################
 
-# Sigma of white noise: high, medium and low amount of noise
+# Sigma of white noise: high, medium and low amount of noise (i.e. sigma_W)
 whiteSigma_vec <- trueMCvalues('sim_act', 'TrueSigma')
+#whiteSigma_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2W'))
+whiteSigma_vec <- sqrt(c(12033.9479, 779.7203, 226.7064))
+
+# Sigma of between subject noise, sigma_B, note: sigma^2_B/sigma^2_W = 0.5
+#	--> corresponds to random slope b1_bsub
+#bSubSigma <- sqrt(trueMCvalues('sim_act', 'TrueSigma2B'))
+bSubSigma_vec <- sqrt(c(153.061224, 9.917355, 2.883506))
+# Random intercept between subjects
+#bSubRint <- trueMCvalues('sim_act', 'Trueb0_Bsub')
+bSubRint <- 1
 
 # We estimated the amount of between-study heterogeneity using the I^2
 #   statistic. This is the amount of between-study hereogeneity in relation to 
@@ -195,8 +202,12 @@ eta2_vec <- (I2_vec * whiteSigma_vec**2)/(1-I2_vec)
 eta_vec <- sqrt(eta2_vec)
 
 # Vector of between study variability
-# Tau_vec <- c(0, 36, 94)
-  #trueMCvalues('sim_act', 'Tau')
+Tau_vec <- c(0, 36, 94)
+trueMCvalues('sim_act', 'Tau')
+
+# Random intercept between studies
+#bStudRint <- trueMCvalues('sim_act', 'Trueb0_Bstud')
+bStudRint <- 1
 
 # Change number of studies in the MA.
 # However, need to find more sensible values.
@@ -247,7 +258,7 @@ X <- simprepTemporal(total,1,onsets = onsets,
                      TR = TR, acc = 0.1, hrf = "double-gamma")
 
 # Generate time series for ONE active voxel: predicted signal, this is the design
-pred <- simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
+pred <- simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
 
 # Smooth the GT and put it into the map
 SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
@@ -262,14 +273,23 @@ SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
 for(p in 1:NumPar){
   print(paste('At parameter ', p, ' in simulation ', K, sep=''))
 
-  # Select studies, amount of white noise and between-study variability
+  # Select studies, amount of white noise, between-subject variability and between-study variability
   whiteSigma <- ParamComb[p, 'whiteSigma']
   eta <- ParamComb[p, 'eta']
   nstud <- ParamComb[p, 'nstud']
+  # Between-subject variability moves with white noise
+  bSubSigma <- bSubSigma_vec[whiteSigma == whiteSigma_vec]
 
   # Empty vectors
   COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
   STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM),nstud))
+  
+  # First generate the variance-covariance matrix for all studies.
+  # This one has a random intercept and slope.
+  var_cov_Study <- rbind(c(bStudRint**2, 0), c(0, eta**2))
+  
+  # Now generate the study specific random intercept and slope values using this matrix
+  Stud_matrix <- MASS::mvrnorm(nstud, mu=c(0,0), Sigma = var_cov_Study)
 
   # For loop over studies
   for(t in 1:nstud){
@@ -277,30 +297,49 @@ for(p in 1:NumPar){
     # Create the delta: subject specific true effect, using eta as between-study
     #   heterogeneity.
     # This is done by generating a study specific BOLD signal at center of activation.
-    BOLDCS <- BOLDC + rnorm(n = 1, mean = 0, sd = eta)
+    #BOLDCS <- BOLDC + rnorm(n = 1, mean = 0, sd = eta)
     
     # Need to be in correct scale
-    signal_BOLDCS <- BOLDCS * (pred-base) + base
+    #signal_BOLDCS <- BOLDCS * (pred-intcpt) + intcpt
     
     # Now get the smoothed (raw) signal for this study
-    StudData <- SmGT %o% signal_BOLDCS
+    #StudData <- SmGT %o% signal_BOLDCS
     
     # Transform to voxel * nscan matrix (instead of 4D image)
-    StudDataT <- array(StudData, dim = c(prod(DIM), nscan))
+    #StudDataT <- array(StudData, dim = c(prod(DIM), nscan))
+    
+    # Now create the variance-covariance matrix for each subject
+    var_cov_Subj <- rbind(c(bSubRint**2, 0), c(0, bSubSigma**2))
+    
+    # Generate the subject-specific values for intercept and slope using this D-matrix
+    Sub_matrix <- MASS::mvrnorm(nsub, mu=c(0,0), Sigma = var_cov_Subj)
     
     # For loop over nsub
     for(s in 1:nsub){
-      # Multilevel data generation:
-      # White noise around signal in each voxel. 
-      # We take study signal and add white noise (using apply)
+      # Generate the signal for center of grid.
       # No smoothing of noise as we are unable to calculate the true value of
-      #   the effect size if we do so!!
-      SubjData <- t(apply(StudDataT, MARGIN = 1, 
-            FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
-                                                sd = whiteSigma)}))
-
-      # Transform it to correct dimension (Y = t x V)
-      Y.data <- t(SubjData)
+      #   the effect size if we do so.
+      signal_s <- (intcpt + Stud_matrix[t,1] + Sub_matrix[s,1]) + 
+        ((BOLDC + Stud_matrix[t,2] + Sub_matrix[s,2]) * pred) + 
+        rnorm(n = nscan, mean = 0, sd = whiteSigma)
+      
+      # Put it in grid
+      SubjData <- apply(SmGT, c(1,2,3), FUN = function(x){x * signal_s})
+      
+      # Transform to correct dimension (Y = t x V)
+      Y.data <- array(SubjData, dim = c(nscan, prod(DIM)))
+      
+      # # Multilevel data generation:
+      # # White noise around signal in each voxel. 
+      # # We take study signal and add white noise (using apply)
+      # # No smoothing of noise as we are unable to calculate the true value of
+      # #   the effect size if we do so!!
+      # SubjData <- t(apply(StudDataT, MARGIN = 1, 
+      #       FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
+      #                                           sd = whiteSigma)}))
+      # 
+      # # Transform it to correct dimension (Y = t x V)
+      # Y.data <- t(SubjData)
 
       ####************####
       #### ANALYZE DATA: 1e level GLM
@@ -402,7 +441,7 @@ for(p in 1:NumPar){
     # Transform to an ES using hedgeG function, for each study
     HedgeG <- apply(matrix(STMAP,ncol=1),1,FUN=hedgeG,N=nsub)
     # Calculate variance of ES
-    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1),1,FUN=varHedge,N=nsub)
+    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1), 1, FUN = varHedgeT, N = nsub)
     # Weights of this study
     weigFix <- 1/VarianceHedgeG
     # Now put in a vector
@@ -514,7 +553,7 @@ for(p in 1:NumPar){
   IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
   IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
   # Degrees of freedom:
-  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[1,1,1]
+  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[TrueLocations[1],TrueLocations[2],TrueLocations[3]]
 
   CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
   CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
@@ -535,7 +574,7 @@ for(p in 1:NumPar){
     tmpObject <- get(levels(saveParam)[j])
     nameObject <- levels(saveParam)[j]
     MAvsIBMAres <- GetTibble(tmpObject, nameObject,
-                             sim = K, DIM, whiteSigma, tau, nstud, tdof_t1) %>%
+                             sim = K, DIM, whiteSigma, eta, nstud, tdof_t1) %>%
       bind_rows(MAvsIBMAres, .)
   }
 }

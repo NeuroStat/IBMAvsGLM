@@ -68,15 +68,19 @@ set.seed(1990)
 # Directories of the data for different simulations
 DATAwd <- list(
   'Take[MAvsIBMA_Act]' = 
-    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results"
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results",
+  'Take[MAvsIBMA_Act_RanInSl]' = 
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/Results"
 )
 NUMDATAwd <- length(DATAwd)
-currentWD <- 1
+currentWD <- 2
 
 # If available, load in Intermediate Results: this is location where summarized results are written
 LIR <- list(
   'Take[MAvsIBMA_Act]' = 
-    '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/ProcessedResults'
+    '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/ProcessedResults',
+  'Take[MAvsIBMA_Act_RanInSl]' = 
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/ProcessedResults"
 )
 
 # Number of conficence intervals
@@ -103,7 +107,7 @@ MAvsIBMAres <- tibble(sim = integer(),
                       value = numeric(),
                       parameter = saveParam,
                       sigma = numeric(),
-                      tau = numeric(),
+                      eta = numeric(),
                       nstud = numeric(),
                       FLAMEdf_3 = numeric())
 
@@ -247,7 +251,7 @@ if(!RAWDATA){
     # Drop wSIMSDCov (not interested in)
     dplyr::select(-wSimSDCov) %>%
     # Summarise over simulations
-    group_by(parameter, TrueD, tau, nstud) %>%
+    group_by(parameter, TrueD, eta, nstud) %>%
     summarise(coverage = mean(wSimCoverage),
               sdCoverage = sd(wSimCoverage))
   
@@ -255,27 +259,27 @@ if(!RAWDATA){
   COVdata <- readRDS(file = 
                 paste(LIR[[currentWD]], '/coverage_all.rda', sep = ''))
   # Summarise over simulations first
-  COV <- COVdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+  COV <- COVdata %>% group_by(voxel, parameter, TrueD, eta, nstud) %>%
     summarise(AvgSimCov = mean(cov_IND)) %>%
-    group_by(parameter, TrueD, tau, nstud) %>%
+    group_by(parameter, TrueD, eta, nstud) %>%
     summarise(AvgCOV = mean(AvgSimCov))
 
   # Values for CI length
   CILdata <- readRDS(file = 
               paste(LIR[[currentWD]], '/CIlength_all.rda', sep = ''))
-  CIL <- CILdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+  CIL <- CILdata %>% group_by(voxel, parameter, TrueD, eta, nstud) %>%
     summarise(AvgSimCIL = mean(CIlength)) %>%
-    group_by(parameter, TrueD, tau, nstud) %>%
+    group_by(parameter, TrueD, eta, nstud) %>%
     summarise(AvgCIL = mean(AvgSimCIL))
   
   # Values for standardized bias
   BiasData <- readRDS(file = 
       paste(LIR[[currentWD]], '/bias_all.rda', sep = ''))
-  BIAS <- BiasData %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
+  BIAS <- BiasData %>% group_by(voxel, parameter, TrueD, eta, nstud) %>%
     summarise(AvgBias = mean(bias),
            SDBias = sd(bias)) %>%
     mutate(StBias = AvgBias/SDBias * 100) %>%
-    group_by(parameter, TrueD, tau, nstud) %>%
+    group_by(parameter, TrueD, eta, nstud) %>%
     summarise(AvgStBias = mean(StBias))
   
   # Values for estimated variance
@@ -285,10 +289,10 @@ if(!RAWDATA){
     # Temp sqrt as I assumed I had tau, but I already had tau^2
     mutate(EstVar = ifelse(parameter == "MA.WeightedAvg",
                                           sqrt(EstVar), EstVar)) %>%
-    group_by(voxel, parameter, TrueD, tau, nstud) %>%
+    group_by(voxel, parameter, TrueD, eta, nstud) %>%
     summarise(AvgSimEstVar = mean(EstVar)) %>%
     ungroup() %>%
-    group_by(parameter, TrueD, tau, nstud) %>%
+    group_by(parameter, TrueD, eta, nstud) %>%
     summarise(AvgEstVar = mean(AvgSimEstVar))
   
 }
@@ -305,7 +309,7 @@ if(!RAWDATA){
 CoveragePlot %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+         etaL = paste('eta ~ "=" ~ ', round(eta, 2), sep = '')) %>%
   # 4) plot the results
   ggplot(., aes(x = nstud, y = coverage)) + 
   geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
@@ -322,7 +326,7 @@ CoveragePlot %>%
   geom_hline(aes(yintercept = 0.95), colour = 'black') +
   ggtitle('Empirical coverages of 95% CI', 
           subtitle = 'Only voxels with true activation') +
-  facet_grid(d ~ tauL, labeller = label_parsed) +
+  facet_grid(d ~ etaL, labeller = label_parsed) +
   theme_bw() 
   
 
@@ -330,7 +334,7 @@ CoveragePlot %>%
 CoveragePlot %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         tauL = paste('tau ~ "=" ~ ', round(tau, 2), sep = '')) %>%
+         etaL = paste('tau ~ "=" ~ ', round(eta, 2), sep = '')) %>%
   # 4) plot the results
   ggplot(., aes(x = nstud, y = coverage)) + 
   geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +
@@ -344,7 +348,7 @@ CoveragePlot %>%
   geom_hline(aes(yintercept = 0.95), colour = 'black') +
   ggtitle('Empirical coverages of 95% CI', 
           subtitle = 'Only voxels with true activation - Cohen\' s d corresponds to center of activation') +
-  facet_grid(d ~ tauL, labeller = label_parsed) +
+  facet_grid(d ~ etaL, labeller = label_parsed) +
   theme_bw() 
 
 
