@@ -302,6 +302,9 @@ In **R**, this is for all values of between-subject and between-study variabilit
 X_G <- matrix(1, nrow = nsub, ncol = 1)
 trueVarBetaG <- c((sigma_b2^2 + (sigma_eps^2 / sum((X_s - mean(X_s))^2))) / nsub)
 X_S <- matrix(1, nrow = nstud, ncol = 1)
+# Check
+solve(t(X_S) %*% X_S)
+1/nstud
 trueVarBetaS <- (sigma_eta2 + trueVarBetaG) / nstud
 trueVarBetaS
 ```
@@ -318,7 +321,8 @@ for(i in 1:IDs){
   allDat <- bind_rows(allDat,
   readRDS(file = paste(RawDat, 'Results_bsub_',sigma_b2[1],'_bstud_',
                        sigma_eta2[1],'/VAR3LVL_',i,'.rda', sep = '')) %>%
-    mutate(True_SD_bstud = sigma_eta2[1]),
+    mutate(True_SD_bstud = sigma_eta2[1]) %>%
+    rename(SD_bstud = SD_bsub),
   readRDS(file = paste(RawDat, 'Results_bsub_',sigma_b2[2],'_bstud_',
                        sigma_eta2[2],'/VAR3LVL_',i,'.rda', sep = '')) %>%
     mutate(True_SD_bstud = sigma_eta2[2]),
@@ -343,7 +347,7 @@ allDat %>% group_by(type, True_SD_bstud) %>%
   summarise(Avg_beta = mean(estimate),
             Obs_var_beta = var(estimate),
             Avg_est_var_beta = mean(variance),
-            Avg_sd_bstud = mean(SD_bsub),
+            Avg_sd_bstud = mean(SD_bstud),
             EC = mean(EC)) %>%
   mutate(TrueVar_beta = trueVarBetaS) %>%
   #Re-arrange
