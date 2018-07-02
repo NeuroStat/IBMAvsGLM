@@ -19,8 +19,8 @@
 # GLM to an ES and calculate a weighted average using a random effects MA model.
 # This is compared with a third level GLM, mixed effects model.
 
-# Activation and between study heterogeneity is added by using the I^2
-# statistic.
+# Activation and between study heterogeneity is added using random intercept + slopes.
+# Signal in every voxel!
 
 
 # MEASURES:
@@ -119,6 +119,16 @@ MAvsIBMAres <- tibble(sim = integer(),
 ###############
 ##
 
+# Function to generate a time series (for one voxel) with specified random intercepts and slopes
+# for each subject & study.
+generateTimeSeries <- function(nscan, BOLDC, int, X, 
+                               d0_bsub, d1_bsub, g0_bstud, g1_bstud, sigma_wsub){
+  signal_s <- (int + d0_bsub + g0_bstud) +
+    ((BOLDC + d1_bsub + g1_bstud) * X) + 
+    rnorm(n = nscan, mean = 0, sd = sigma_wsub)
+  return(signal_s)
+}
+
 # Function to gather results into tibbles
 GetTibble <-function(data, nameParam, sim, DIM, sigma, eta, nstud, tdof_t1){
   gather_data <- data.frame('sim' = as.integer(sim),
@@ -145,9 +155,6 @@ GetTibble <-function(data, nameParam, sim, DIM, sigma, eta, nstud, tdof_t1){
 
 # Image characteristics
 DIM <- trueMCvalues(ID = 'sim_act', keyword = 'DIM')
-voxdim <- trueMCvalues('sim_act', 'voxdim')   # Voxelsize
-ext <- trueMCvalues('sim_act', 'ext')      #  Extend
-nregio <- trueMCvalues('sim_act', 'nregio')
 
 # Signal characteristics
 TR <- trueMCvalues(ID = 'sim_act', keyword = 'TR')
@@ -166,10 +173,6 @@ BOLDC <- trueMCvalues('sim_act', 'BOLDC')
 # Base of signal (i.e. intercept)
 intcpt <- trueMCvalues('sim_act', 'base')
 
-# Spatial smoothing of signal
-fwhm <- trueMCvalues('sim_act', 'fwhm')
-sigma <- trueMCvalues('sim_act', 'sigma')
-width <- trueMCvalues('sim_act', 'width')
 
 # Number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
 nsub <- trueMCvalues('sim_act', 'nsub')
@@ -178,18 +181,15 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 #### Simulation parameters
 ##############################
 
-# Sigma of white noise: high, medium and low amount of noise (i.e. sigma_W)
-whiteSigma_vec <- trueMCvalues('sim_act', 'TrueSigma')
-#whiteSigma_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2W'))
-whiteSigma_vec <- sqrt(c(12033.9479, 779.7203, 226.7064))
+# Sigma of WITHIN-SUBJECT white noise: high, medium and low amount of noise (i.e. sigma_W)
+whiteSigma_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2W'))
 
 # Sigma of between subject noise, sigma_B, note: sigma^2_B/sigma^2_W = 0.5
 #	--> corresponds to random slope b1_bsub
-#bSubSigma <- sqrt(trueMCvalues('sim_act', 'TrueSigma2B'))
-bSubSigma_vec <- sqrt(c(153.061224, 9.917355, 2.883506))
+bSubSigma_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2B'))
+
 # Random intercept between subjects
-#bSubRint <- trueMCvalues('sim_act', 'Trueb0_Bsub')
-bSubRint <- 1
+bSubRint <- trueMCvalues('sim_act', 'Trueb0_Bsub')
 
 # We estimated the amount of between-study heterogeneity using the I^2
 #   statistic. This is the amount of between-study hereogeneity in relation to 
@@ -202,12 +202,10 @@ eta2_vec <- (I2_vec * whiteSigma_vec**2)/(1-I2_vec)
 eta_vec <- sqrt(eta2_vec)
 
 # Vector of between study variability
-Tau_vec <- c(0, 36, 94)
-trueMCvalues('sim_act', 'Tau')
+Tau_vec <- trueMCvalues('sim_act', 'Tau')
 
 # Random intercept between studies
-#bStudRint <- trueMCvalues('sim_act', 'Trueb0_Bstud')
-bStudRint <- 1
+bStudRint <- trueMCvalues('sim_act', 'Trueb0_Bstud')
 
 # Change number of studies in the MA.
 # However, need to find more sensible values.
@@ -229,7 +227,7 @@ NumPar <- dim(ParamComb)[1]
 #### Subject/Study specific details
 ###################################
 # Subject parameters
-TrueLocations <- trueMCvalues('sim_act', 'TrueLocations')
+#TrueLocations <- trueMCvalues('sim_act', 'TrueLocations')
 
 ###########################
 ###### GROUND TRUTH #######
@@ -242,27 +240,27 @@ truthdesign <- simprepTemporal(1, 1, onsets = 1, effectsize = 1,
                                durations = 1, TR = 1, acc = 0.1)
 
 # Now use this to get a sphere shaped area
-area <- simprepSpatial(regions = 1, coord = list(TrueLocations),
-                       radius = ext, form = "sphere", fading = 0)
-truth <- simVOLfmri(design = truthdesign, image = area,
-                    dim = DIM, SNR = 1, noise = "none")[,,,1]
-GroundTruth <- ifelse(truth > 0, 1, 0)
+# area <- simprepSpatial(regions = 1, coord = list(TrueLocations),
+#                        radius = ext, form = "sphere", fading = 0)
+# truth <- simVOLfmri(design = truthdesign, image = area,
+#                     dim = DIM, SNR = 1, noise = "none")[,,,1]
+# GroundTruth <- ifelse(truth > 0, 1, 0)
 
 #######################################
 #### DESIGN AND SIGNAL TIME SERIES ####
 #######################################
 
-# Generating a design matrix
-X <- simprepTemporal(total,1,onsets = onsets,
+# Preparing the design matrix
+X_prep <- simprepTemporal(total,1,onsets = onsets,
                      effectsize = 1, durations = duration,
                      TR = TR, acc = 0.1, hrf = "double-gamma")
 
-# Generate time series for ONE active voxel: predicted signal, this is the design
-pred <- simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
+# Generate the design matrix for each voxel
+X <- simTSfmri(design=X_prep, base=0, SNR=1, noise="none", verbose=FALSE)
 
 # Smooth the GT and put it into the map
-SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
-                      ksize = width, sigma = diag(sigma,3))
+#SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
+#                      ksize = width, sigma = diag(sigma,3))
 
 
 ##################
@@ -316,18 +314,28 @@ for(p in 1:NumPar){
     
     # For loop over nsub
     for(s in 1:nsub){
-      # Generate the signal for center of grid.
+      # Generate the signal for EACH voxel. 
       # No smoothing of noise as we are unable to calculate the true value of
       #   the effect size if we do so.
-      signal_s <- (intcpt + Stud_matrix[t,1] + Sub_matrix[s,1]) + 
-        ((BOLDC + Stud_matrix[t,2] + Sub_matrix[s,2]) * pred) + 
-        rnorm(n = nscan, mean = 0, sd = whiteSigma)
+      # Run the generateTimeSeries function for each voxel.
+      # Replicate is used to run the random number generator function several times.
+      # Directly in correct dimension (Y = t x V).
+      Y.data <- replicate(n = prod(DIM), generateTimeSeries(nscan, BOLDC, intcpt, X, 
+                   d0_bsub = Sub_matrix[s,1], d1_bsub = Sub_matrix[s,2],
+                   g0_bstud = Stud_matrix[t, 1], g1_bstud = Stud_matrix[t,2],
+                   sigma_wsub = whiteSigma),
+                simplify = "array")
       
-      # Put it in grid
-      SubjData <- apply(SmGT, c(1,2,3), FUN = function(x){x * signal_s})
-      
-      # Transform to correct dimension (Y = t x V)
-      Y.data <- array(SubjData, dim = c(nscan, prod(DIM)))
+      # 
+      # signal_s <- (intcpt + Stud_matrix[t,1] + Sub_matrix[s,1]) + 
+      #   ((BOLDC + Stud_matrix[t,2] + Sub_matrix[s,2]) * pred) + 
+      #   rnorm(n = nscan, mean = 0, sd = whiteSigma)
+      # 
+      # # Put it in grid
+      # SubjData <- apply(SmGT, c(1,2,3), FUN = function(x){x * signal_s})
+      # 
+      # # Transform to 
+      # Y.data <- array(SubjData, dim = c(nscan, prod(DIM)))
       
       # # Multilevel data generation:
       # # White noise around signal in each voxel. 
@@ -345,22 +353,22 @@ for(p in 1:NumPar){
       #### ANALYZE DATA: 1e level GLM
       ####************####
       # COPE (beta 1) --> fit GLM
-      model.lm <- lm(Y.data ~ pred)
-      b1 <- coef(model.lm)['pred',]
+      model.lm <- lm(Y.data ~ X)
+      b1 <- coef(model.lm)['X',]
       COPE[,s] <- b1
 
       # VARCOPE --> estimate residual (we need to extend the design matrix with an intercept)
-      xIN <- cbind(1,pred)
+      xIN <- cbind(1,X)
       BETA <- coef(model.lm)
       res <- (t(Y.data - xIN %*% BETA) %*% (Y.data - xIN %*% BETA))/(nscan - 2)
       res <- diag(res)
       # Contrast: not interested in intercept
-      CONTRAST <- matrix(c(0,1),nrow=1)
+      CONTRAST <- matrix(c(0,1), nrow=1)
       # Calculate varcope
       VARCOPE[,s] <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST) %*% res
 
       # Clean objects
-      rm(model.lm, b1, xIN, BETA,res,CONTRAST)
+      rm(model.lm, b1, xIN, BETA, res, CONTRAST)
     }
 
     ####************####
@@ -430,7 +438,7 @@ for(p in 1:NumPar){
     command <- paste(fslpath, 'flameo --cope=GRCOPE --vc=GRVARCOPE --mask=mask --ld=study',t,'_stats --dm=design.mat --cs=design.grp --tc=design.con --runmode=flame1', sep='')
     Sys.setenv(FSLOUTPUTTYPE="NIFTI")
     system(command)
-
+    
     # Put the result of pooling subjects in a vector for the COPE and VARCOPE
     STCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
     STVARCOPE[,t] <- readNIfTI(paste(DataWrite,"/study",t,"_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
@@ -439,9 +447,9 @@ for(p in 1:NumPar){
     # Load in T-map
     STMAP <- readNIfTI(paste(DataWrite,"/study",t,"_stats/tstat1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
     # Transform to an ES using hedgeG function, for each study
-    HedgeG <- apply(matrix(STMAP,ncol=1),1,FUN=hedgeG,N=nsub)
+    HedgeG <- apply(matrix(STMAP,ncol=1), 1, FUN = hedgeG, N = nsub)
     # Calculate variance of ES
-    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1), 1, FUN = varHedgeT, N = nsub)
+    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1), 1, FUN = NeuRRoStat::varHedgeT, N = nsub)
     # Weights of this study
     weigFix <- 1/VarianceHedgeG
     # Now put in a vector
@@ -464,17 +472,17 @@ for(p in 1:NumPar){
     # in a function.
   STWEIGHTSL <- as.list(as.data.frame(t(STWEIGHTS)))
   STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
-  ESTTAU <- array(as.vector(mapply(tau,Y = STHEDGEL,
+  ESTTAU <- array(as.vector(mapply(NeuRRoStat::tau, Y = STHEDGEL,
               W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
 
   # Random effect weights
-  STWEIGHTS_ran <- (1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud))
+  STWEIGHTS_ran <- 1/(STWEIGHTS + array(ESTTAU, dim = c(prod(DIM), nstud)))
 
   # Calculate weighted average.
-  MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran),1,sum))/(apply(STWEIGHTS_ran,1,sum))
+  MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran), 1, sum))/(apply(STWEIGHTS_ran, 1 ,sum))
 
   # CI for weighted average based on weighted variance CI
-  CI.MA.weightedVariance <- (apply((STWEIGHTS_ran*(STHEDGE - MA.WeightedAvg)^2),c(1),sum))/((nstud - 1) * apply(STWEIGHTS_ran,1,sum))
+  CI.MA.weightedVariance <- (apply((STWEIGHTS_ran*(STHEDGE - MA.WeightedAvg)^2), c(1), sum))/((nstud - 1) * apply(STWEIGHTS_ran,1,sum))
   CI.MA.upper.weightVar <- matrix(MA.WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
   CI.MA.lower.weightVar <- matrix(MA.WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
 
@@ -553,8 +561,8 @@ for(p in 1:NumPar){
   IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
   IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
   # Degrees of freedom:
-  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[TrueLocations[1],TrueLocations[2],TrueLocations[3]]
-
+  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[5,5,5]
+  
   CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
   CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
 
