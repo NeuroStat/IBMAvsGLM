@@ -173,7 +173,6 @@ BOLDC <- trueMCvalues('sim_act', 'BOLDC')
 # Base of signal (i.e. intercept)
 intcpt <- trueMCvalues('sim_act', 'base')
 
-
 # Number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
 nsub <- trueMCvalues('sim_act', 'nsub')
 
@@ -184,28 +183,35 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 # Sigma of WITHIN-SUBJECT white noise: high, medium and low amount of noise (i.e. sigma_W)
 whiteSigma_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2W'))
 
-# Sigma of between subject noise, sigma_B, note: sigma^2_B/sigma^2_W = 0.5
-#	--> corresponds to random slope b1_bsub
-bSubSigma_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2B'))
+# Sigma^2 of between subject noise, note: sigma^2_B/sigma^2_W = 0.5
+#	--> corresponds to variance of random slopes b1_bsub
+TrueSigma2B1_vec <- trueMCvalues('sim_act', 'TrueSigma2B1')
 
-# Random intercept between subjects
-bSubRint <- trueMCvalues('sim_act', 'Trueb0_Bsub')
+# Random intercepts between subjects
+TrueSigma2B0 <- trueMCvalues('sim_act', 'TrueSigma2B0')
 
-# We estimated the amount of between-study heterogeneity using the I^2
-#   statistic. This is the amount of between-study hereogeneity in relation to 
-#   total variability. 
-I2_vec <- trueMCvalues('sim_act', 'I2')/100
+# It is possible to use the estimated I^2 as an indicator for between-study
+# heterogeneity. 
+I2 <- FALSE
+if(I2){
+  # We estimated the amount of between-study heterogeneity using the I^2
+  #   statistic. This is the amount of between-study hereogeneity in relation to 
+  #   total variability. 
+  I2_vec <- trueMCvalues('sim_act', 'I2')/100
+  
+  # Let us denote the amount of between-study variability in the GLM notation as eta^2
+  #   Hence we assume: I^2 = (eta**2)/(eta**2 + whiteSigma**2)
+  eta2_vec <- (I2_vec * (whiteSigma_vec**2 + TrueSigma2B1_vec))/(1-I2_vec)
+  eta_vec <- sqrt(eta2_vec)
+}
 
-# Let us denote the amount of between-study variability in the GLM notation as eta^2
-#   Hence we assume: I^2 = (eta**2)/(eta**2 + whiteSigma**2)
-eta2_vec <- (I2_vec * whiteSigma_vec**2)/(1-I2_vec)
-eta_vec <- sqrt(eta2_vec)
-
-# Vector of between study variability
-Tau_vec <- trueMCvalues('sim_act', 'Tau')
-
-# Random intercept between studies
-bStudRint <- trueMCvalues('sim_act', 'Trueb0_Bstud')
+# Otherwise work with TrueSigma2starB1, which is an estimate of tau^2
+if(!I2){
+  # Have both slopes (we call it eta in this script)
+  eta_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2starB1'))
+  # as intercepts
+  TrueSigma2starB0 <- trueMCvalues('sim_act', 'TrueSigma2starB0')
+}
 
 # Change number of studies in the MA.
 # However, need to find more sensible values.
@@ -227,24 +233,16 @@ NumPar <- dim(ParamComb)[1]
 #### Subject/Study specific details
 ###################################
 # Subject parameters
-#TrueLocations <- trueMCvalues('sim_act', 'TrueLocations')
 
 ###########################
 ###### GROUND TRUTH #######
 ###########################
 
-# NOTE: same code as the one from the R package fMRIGI!
+# NOTE: partially same code as the one from the R package fMRIGI!
 
 # We generate a temporary design for getting a true signal
 truthdesign <- simprepTemporal(1, 1, onsets = 1, effectsize = 1,
                                durations = 1, TR = 1, acc = 0.1)
-
-# Now use this to get a sphere shaped area
-# area <- simprepSpatial(regions = 1, coord = list(TrueLocations),
-#                        radius = ext, form = "sphere", fading = 0)
-# truth <- simVOLfmri(design = truthdesign, image = area,
-#                     dim = DIM, SNR = 1, noise = "none")[,,,1]
-# GroundTruth <- ifelse(truth > 0, 1, 0)
 
 #######################################
 #### DESIGN AND SIGNAL TIME SERIES ####
@@ -257,10 +255,6 @@ X_prep <- simprepTemporal(total,1,onsets = onsets,
 
 # Generate the design matrix for each voxel
 X <- simTSfmri(design=X_prep, base=0, SNR=1, noise="none", verbose=FALSE)
-
-# Smooth the GT and put it into the map
-#SmGT <- AnalyzeFMRI::GaussSmoothArray(GroundTruth, voxdim = voxdim,
-#                      ksize = width, sigma = diag(sigma,3))
 
 
 ##################
@@ -276,45 +270,33 @@ for(p in 1:NumPar){
   eta <- ParamComb[p, 'eta']
   nstud <- ParamComb[p, 'nstud']
   # Between-subject variability moves with white noise
-  bSubSigma <- bSubSigma_vec[whiteSigma == whiteSigma_vec]
+  TrueSigma2B1 <- TrueSigma2B1_vec[whiteSigma == whiteSigma_vec]
 
   # Empty vectors
   COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
-  STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM),nstud))
+  STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM), nstud))
   
-  # First generate the variance-covariance matrix for all studies.
+  # First generate the variance-covariance matrix for all studies (g-matrix).
   # This one has a random intercept and slope.
-  var_cov_Study <- rbind(c(bStudRint**2, 0), c(0, eta**2))
+  # Note that we have sigma^2 for random intercepts, but we use the square root for
+  # between-study variability. Hence we need to square this one.
+  ETA <- rbind(c(TrueSigma2starB0, 0), c(0, eta**2))
   
   # Now generate the study specific random intercept and slope values using this matrix
-  Stud_matrix <- MASS::mvrnorm(nstud, mu=c(0,0), Sigma = var_cov_Study)
+  Stud_matrix <- MASS::mvrnorm(nstud, mu=c(0,0), Sigma = ETA)
 
   # For loop over studies
   for(t in 1:nstud){
   print(paste('At study ', t, ', parameter ', p, ' in simulation ', K, sep=''))
-    # Create the delta: subject specific true effect, using eta as between-study
-    #   heterogeneity.
-    # This is done by generating a study specific BOLD signal at center of activation.
-    #BOLDCS <- BOLDC + rnorm(n = 1, mean = 0, sd = eta)
+    # Now create the variance-covariance matrix for each subject (d-matrix).
+    SIGMA <- rbind(c(TrueSigma2B0, 0), c(0, TrueSigma2B1))
     
-    # Need to be in correct scale
-    #signal_BOLDCS <- BOLDCS * (pred-intcpt) + intcpt
-    
-    # Now get the smoothed (raw) signal for this study
-    #StudData <- SmGT %o% signal_BOLDCS
-    
-    # Transform to voxel * nscan matrix (instead of 4D image)
-    #StudDataT <- array(StudData, dim = c(prod(DIM), nscan))
-    
-    # Now create the variance-covariance matrix for each subject
-    var_cov_Subj <- rbind(c(bSubRint**2, 0), c(0, bSubSigma**2))
-    
-    # Generate the subject-specific values for intercept and slope using this D-matrix
-    Sub_matrix <- MASS::mvrnorm(nsub, mu=c(0,0), Sigma = var_cov_Subj)
+    # Generate the subject-specific values for intercept and slope using this d-matrix
+    Sub_matrix <- MASS::mvrnorm(nsub, mu=c(0,0), Sigma = SIGMA)
     
     # For loop over nsub
     for(s in 1:nsub){
-      # Generate the signal for EACH voxel. 
+      # Generate the signal in EACH voxel. 
       # No smoothing of noise as we are unable to calculate the true value of
       #   the effect size if we do so.
       # Run the generateTimeSeries function for each voxel.
@@ -326,29 +308,6 @@ for(p in 1:NumPar){
                    sigma_wsub = whiteSigma),
                 simplify = "array")
       
-      # 
-      # signal_s <- (intcpt + Stud_matrix[t,1] + Sub_matrix[s,1]) + 
-      #   ((BOLDC + Stud_matrix[t,2] + Sub_matrix[s,2]) * pred) + 
-      #   rnorm(n = nscan, mean = 0, sd = whiteSigma)
-      # 
-      # # Put it in grid
-      # SubjData <- apply(SmGT, c(1,2,3), FUN = function(x){x * signal_s})
-      # 
-      # # Transform to 
-      # Y.data <- array(SubjData, dim = c(nscan, prod(DIM)))
-      
-      # # Multilevel data generation:
-      # # White noise around signal in each voxel. 
-      # # We take study signal and add white noise (using apply)
-      # # No smoothing of noise as we are unable to calculate the true value of
-      # #   the effect size if we do so!!
-      # SubjData <- t(apply(StudDataT, MARGIN = 1, 
-      #       FUN = function(voxel){voxel + rnorm(n = nscan, mean = 0, 
-      #                                           sd = whiteSigma)}))
-      # 
-      # # Transform it to correct dimension (Y = t x V)
-      # Y.data <- t(SubjData)
-
       ####************####
       #### ANALYZE DATA: 1e level GLM
       ####************####
