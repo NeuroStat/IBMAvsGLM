@@ -48,23 +48,32 @@ if(is.na(MACHINE)){
 # Directories of the data for different simulations: here is raw data stored
 if(MACHINE=='HPC'){
   DATAwd <- list(
-    'Take[MAvsIBMA_Act]' = try(as.character(input)[2],silent=TRUE))
+    'Take[MAvsIBMA_Act]' = try(as.character(input)[2],silent=TRUE),
+    'Take[MAvsIBMA_Act_RanInSl]' = try(as.character(input)[2],silent=TRUE))
 }
 if(MACHINE=='MAC'){
   DATAwd <- list(
     'Take[MAvsIBMA_Act]' = 
-      "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results")
+      "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results",
+    'Take[MAvsIBMA_Act_RanInSl]' = 
+      "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/Results"
+  )
 }
 NUMDATAwd <- length(DATAwd)
 # Select your simulation setting here
-currentWD <- 1 
+currentWD <- 2
 
 # Write Intermediate Results: this is location where summarized results are written
 if(MACHINE=='HPC'){
   WIR <- '/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA/ProcessedResults'
 }
 if(MACHINE=='MAC'){
-  WIR <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA/ProcessedResults'
+  WIR <- list(
+    'Take[MAvsIBMA_Act]' = 
+      '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/ProcessedResults',
+    'Take[MAvsIBMA_Act_RanInSl]' = 
+      "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/ProcessedResults"
+  )[[currentWD]]
 }
 
 # Date of today
@@ -72,6 +81,11 @@ date <- Sys.Date()
 
 # Set starting seed
 set.seed(1990)
+
+# Print arguments
+print(input)
+print('-----')
+print(MACHINE)
 
 ##
 ###############
@@ -91,10 +105,8 @@ library(gridExtra)
 library(oro.nifti)
 library(reshape2)
 library(RColorBrewer)
-library(Hmisc)
 library(devtools)
 library(neuRosim)
-library(scatterplot3d)
 library(NeuRRoStat)
 library(fMRIGI)
 
@@ -110,9 +122,10 @@ CIs <- c('MA-weightVar','GLM-t')
 NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
-info <- data.frame('Sim' = c(1),
-                   'nsim' = c(500),
-                   'nsub' = trueMCvalues('sim_act', 'nsub'))
+info <- data.frame('Sim' = c(1, 2),
+                   'nsim' = c(1000, 1000),
+                   'nsub' = c(trueMCvalues('sim_act', 'nsub'),
+                            trueMCvalues('sim_act', 'nsub')))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
 
@@ -132,7 +145,7 @@ MAvsIBMAres <- tibble(sim = integer(),
                       value = numeric(),
                       parameter = saveParam,
                       sigma = numeric(),
-                      tau = numeric(),
+                      eta = numeric(),
                       nstud = numeric(),
                       FLAMEdf_3 = numeric())
 
@@ -140,7 +153,7 @@ MAvsIBMAres <- tibble(sim = integer(),
 coverage_Vox <- tibble(sim = integer(),
                       parameter = saveParam,
                       TrueD = numeric(),
-                      tau = numeric(),
+                      eta = numeric(),
                       nstud = numeric(),
                       coverage = numeric(),
                       sdCov = numeric())
@@ -150,7 +163,7 @@ coverage_all <- tibble(sim = integer(),
                        voxel = integer(),
                        parameter = saveParam,
                        TrueD = numeric(),
-                       tau = numeric(),
+                       eta = numeric(),
                        nstud = numeric(),
                        cov_IND = numeric())
 
@@ -159,7 +172,7 @@ bias_all <- tibble(sim = integer(),
                    voxel = integer(),
                     parameter = saveParam,
                     TrueD = numeric(),
-                    tau = numeric(),
+                    eta = numeric(),
                     nstud = numeric(),
                     bias = numeric())
 
@@ -168,7 +181,7 @@ CIlength_all <- tibble(sim = integer(),
                    voxel = integer(),
                    parameter = saveParam,
                    TrueD = numeric(),
-                   tau = numeric(),
+                   eta = numeric(),
                    nstud = numeric(),
                    CIlength = numeric())
 
@@ -177,7 +190,7 @@ EstVar_all <- tibble(sim = integer(),
                        voxel = integer(),
                        parameter = saveParam,
                        TrueD = numeric(),
-                       tau = numeric(),
+                       eta = numeric(),
                        nstud = numeric(),
                        EstVar = numeric())
 
@@ -188,55 +201,45 @@ DIM <- trueMCvalues('sim_act', 'DIM')
 #### TRUE VALUES: load in R objects from the R package
 ################
 
+# It is possible to use the estimated I^2 as an indicator for between-study
+# heterogeneity. 
+# --> if so: I2 = TRUE.
+I2 <- FALSE
+if(I2){
+  # We estimated the amount of between-study heterogeneity using the I^2
+  #   statistic. This is the amount of between-study hereogeneity in relation to 
+  #   total variability. 
+  I2_vec <- trueMCvalues('sim_act', 'I2')/100
+  
+  # Let us denote the amount of between-study variability in the GLM notation as eta^2
+  #   Hence we assume: I^2 = (eta**2)/(eta**2 + whiteSigma**2)
+  eta2_vec <- (I2_vec * (whiteSigma_vec**2 + TrueSigma2B1_vec))/(1-I2_vec)
+  eta_vec <- sqrt(eta2_vec)
+}
+# Otherwise work with TrueSigma2starB1, which is an estimate of tau^2
+if(!I2){
+  # Have both slopes (we call it eta in this script)
+  eta_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2starB1'))
+}
+
 # Data frame of true parameter values
 TrueParamDat <- data.frame(Nsub = trueMCvalues('sim_act', 'nsub'),
                            TrueD = trueMCvalues('sim_act', 'TrueD'),
-                           TrueSigma = trueMCvalues('sim_act', 'TrueSigma'),
+                           TrueSigma = sqrt(trueMCvalues('sim_act', 'TrueSigma2W')),
                            TrueG = trueMCvalues('sim_act', 'TrueG'),
-                           Tau = trueMCvalues('sim_act', 'Tau'))
-
-# Smoothed area
-SmGT <- trueMCvalues('sim_act', 'SmGT')
-
-# Switch to vector dimension
-SmGT_v <- data.frame(voxID = 1:prod(DIM),
-             Smooth = array(SmGT, dim = prod(DIM)))
-
-# Masked GT area
-MaskGT <- trueMCvalues('sim_act', 'MaskGT')
+                           eta = eta_vec)
 
 # Data frame with combinations of all simulations run
-ParamComb <- expand.grid('TrueSigma' = trueMCvalues('sim_act', 'TrueSigma'),
-                         'Tau' = trueMCvalues('sim_act', 'Tau'),
+ParamComb <- expand.grid('TrueSigma' = sqrt(trueMCvalues('sim_act', 'TrueSigma2W')),
+                         'eta' = eta_vec,
                          'nstud' = trueMCvalues('sim_act', 'nstud'))
 NumPar <- dim(ParamComb)[1]
 
 # Extend the true values with number of studies
 TrueP_S <- TrueParamDat %>% 
-  inner_join(.,ParamComb, by = c('TrueSigma', 'Tau'))
-
-# We will need to extend the true parameter values with the smoothed value 
-#     for each voxel. We have 3 true values (Hedges' g) per voxel.
-SmParam <- data.frame(voxID = rep(1:prod(DIM), 
-                        each = length(TrueParamDat$TrueG))) %>% 
-  # Add the voxel ID to data frame
-  bind_cols(., 
-      # First replicate data frame for amount of voxels (use do.call rbind to do so)
-      # Then bind columns
-      do.call("rbind", replicate(prod(DIM), TrueParamDat, 
-                                 simplify = FALSE))) %>% as.tibble(.) %>%
-  # Not using number of subjects
-  select(-Nsub) %>%
-  # Join smoothed area vector to dataframe
-  left_join(., SmGT_v, by = 'voxID') %>%
-  # Multiply TrueG with Smoothed value to obtain smoothed Hedges' g
-  mutate(SmoothG = TrueG * Smooth) %>%
-  # Add true COPE value as well as smoothed value
-  mutate(TrueCOPE = trueMCvalues('sim_act', 'BOLDC'),
-         SmoothCOPE = TrueCOPE * Smooth) %>%
-  # Drop tau
-  select(-Tau)
-
+  inner_join(.,ParamComb, by = c('TrueSigma', 'eta')) %>%
+  # Add true COPE value
+  mutate(TrueCOPE = trueMCvalues('sim_act', 'BOLDC'))
 
 ##
 ###############
@@ -250,8 +253,8 @@ for(i in 1:nsim){
   print(paste0('In simulation ',i))
   # First load in the data of this simulation
   MAvsIBMAres <- readRDS(
-    paste(DATAwd[[currentWD]],'/ActMAvsIBMA_',i, '.rda', sep=''))
-
+    paste(DATAwd[[currentWD]],'/ActMAvsIBMA_',i, '.rda', sep='')) 
+	
   #################################
   ###### PROCESSING COVERAGE ######
   #################################
@@ -260,13 +263,16 @@ for(i in 1:nsim){
   # Data frame with estimate only (without the CI bounds)
   Estimate <- MAvsIBMAres %>%
     filter(parameter %in% c('MA.WeightedAvg', 'IBMA.COPE')) %>%
-    left_join(., SmParam, by = c('voxel' = 'voxID',
-                                 'sigma' = 'TrueSigma'))
-  
+    left_join(., TrueP_S, by = c('sigma' = 'TrueSigma',
+                                 'eta' = 'eta',
+                                 'nstud' = 'nstud'))
+
   # Adding the CI bounds. Seperated per method.
   MAwide <- MAvsIBMAres %>%
     filter(parameter %in% c('CI.MA.upper.weightVar', 
                             'CI.MA.lower.weightVar')) %>%
+    # Remove df column
+    dplyr::select(-FLAMEdf_3) %>%
     # Need to spread the data frame with two extra columns
     tidyr::spread(., key = 'parameter', value = 'value') %>%
     # Rename to later bind in one data frame
@@ -274,36 +280,40 @@ for(i in 1:nsim){
            CI_lower = CI.MA.lower.weightVar) %>%
     # Add MA.WeightedAvg to dataframe
     full_join(
-      filter(Estimate, parameter == 'MA.WeightedAvg'),
-      ., by = c("sim", "voxel", "sigma", "tau", "nstud"))
+      filter(Estimate, parameter == 'MA.WeightedAvg') %>% 
+        dplyr::select(-FLAMEdf_3),
+      ., by = c("sim", "voxel", "sigma", "eta", "nstud"))
   
   # Repeat with GLM approach
   GLMwide <- MAvsIBMAres %>%
     filter(parameter %in% c('CI.IBMA.upper.t',
                             'CI.IBMA.lower.t')) %>%
+    # Remove df column
+    dplyr::select(-FLAMEdf_3) %>%
     tidyr::spread(., key = 'parameter', value = 'value') %>%
     # Rename
     rename(., CI_upper = CI.IBMA.upper.t,
            CI_lower = CI.IBMA.lower.t) %>%
     # Add MA.WeightedAvg to dataframe
     full_join(
-      filter(Estimate, parameter == 'IBMA.COPE'),
-      ., by = c("sim", "voxel", "sigma", "tau", "nstud"))
+      filter(Estimate, parameter == 'IBMA.COPE') %>% 
+        dplyr::select(-FLAMEdf_3),
+      ., by = c("sim", "voxel", "sigma", "eta", "nstud"))
   
   # Bind data frames
   ProcessedDat <- bind_rows(MAwide, GLMwide)
   
   # Add CI_coverage and summarise over all voxels
-  EmpCov <- ProcessedDat %>% filter(SmoothG != 0) %>%
-    # True smoothed value within CI limits?
-    # NOTE: smoothed G or smoothed COPE
+  EmpCov <- ProcessedDat %>% 
+    # True value within CI limits?
+    # NOTE: this is either hedges g (MA) or the true value for the BOLD signal (GLM)
     mutate(cov_IND = ifelse(parameter == "MA.WeightedAvg",
-                            ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,1, 0),
-                            ifelse(SmoothCOPE >= CI_lower & SmoothG <= CI_upper,1, 0))) %>%
+                            ifelse(TrueG >= CI_lower & TrueG <= CI_upper,1, 0),
+                            ifelse(TrueCOPE >= CI_lower & TrueCOPE <= CI_upper,1, 0))) %>%
     # Drop variables that we do not need to calculate coverages
       # sigma dropped as info is in TrueD
-    select(voxel, parameter, TrueD, tau, nstud, cov_IND) %>%
-    group_by(parameter, TrueD, tau, nstud) %>%
+    dplyr::select(voxel, parameter, TrueD, eta, nstud, cov_IND) %>%
+    group_by(parameter, TrueD, eta, nstud) %>%
     summarise(coverage = mean(cov_IND),
               sdCov = sd(cov_IND)) %>%
     # Add ID of simulation
@@ -313,15 +323,15 @@ for(i in 1:nsim){
   coverage_Vox <- bind_rows(coverage_Vox, EmpCov)
   
   # Also prepare object without summarizing over the voxels
-  coverage_all <- ProcessedDat %>% filter(SmoothG != 0) %>%
-    # True smoothed value within CI limits?
-    # NOTE: smoothed G or smoothed COPE
+  coverage_all <- ProcessedDat %>% 
+    # True value within CI limits?
+    # NOTE: this is either hedges g (MA) or the true value for the BOLD signal (GLM)
     mutate(cov_IND = ifelse(parameter == "MA.WeightedAvg",
-                            ifelse(SmoothG >= CI_lower & SmoothG <= CI_upper,1, 0),
-                            ifelse(SmoothCOPE >= CI_lower & SmoothG <= CI_upper,1, 0))) %>%
+                            ifelse(TrueG >= CI_lower & TrueG <= CI_upper,1, 0),
+                            ifelse(TrueCOPE >= CI_lower & TrueCOPE <= CI_upper,1, 0))) %>%
     # Drop variables that we do not need to calculate coverages
     # sigma dropped as info is in TrueD
-    select(voxel, parameter, TrueD, tau, nstud, cov_IND) %>%
+    dplyr::select(voxel, parameter, TrueD, eta, nstud, cov_IND) %>%
     # Add ID of simulation
     mutate(sim = i) %>%
     bind_rows(coverage_all,.)
@@ -333,12 +343,12 @@ for(i in 1:nsim){
   ###### PROCESSING CI LENGTH #####
   #################################
   print('Calculating CI length')
+  
   # Use ProcessedDat data frame
   CIlength_all <- ProcessedDat %>%
-    filter(SmoothG != 0) %>%
     mutate(CIlength = CI_upper - CI_lower) %>%
     # Select parameters
-    select(sim, voxel, parameter, TrueD, tau, nstud, CIlength) %>%
+    dplyr::select(sim, voxel, parameter, TrueD, eta, nstud, CIlength) %>%
     bind_rows(CIlength_all,.)
   
   # Reset objects
@@ -348,16 +358,15 @@ for(i in 1:nsim){
   ###### PROCESSING STAN BIAS #####
   #################################
   print('Calculating standardized bias')
+  
   # Use the 'Estimate' dataframe
   bias_all <- Estimate %>%
-    # Only active voxels
-    filter(SmoothG != 0) %>%
     # Mutate bias column, depending on MA or GLM
     mutate(bias = ifelse(parameter == 'MA.WeightedAvg',
-                         (value - SmoothG),
-                         (value - SmoothCOPE))) %>%
+                         (value - TrueG),
+                         (value - TrueCOPE))) %>%
     # Select the parameters
-    select(sim, voxel, parameter, TrueD, tau, nstud, bias) %>%
+    dplyr::select(sim, voxel, parameter, TrueD, eta, nstud, bias) %>%
     # Bind to data frame
     bind_rows(bias_all,.)
     
@@ -377,12 +386,12 @@ for(i in 1:nsim){
     # Now calculate the length of one side of the CI
     mutate(CIL = CI.IBMA.upper.t - IBMA.COPE) %>%
     # Use t-interval to find SE
-    mutate(SE = CIL/(qt(0.975,df = FLAMEdf_3))) %>%
+    mutate(SE = CIL/(qt(0.975, df = FLAMEdf_3))) %>%
     # Square it
     mutate(EstVar = SE^2) %>%
-    select(sim, voxel, sigma, tau, nstud, IBMA.COPE, EstVar) %>%
+    dplyr::select(sim, voxel, sigma, eta, nstud, IBMA.COPE, EstVar) %>%
     gather(key = 'parameter', value = 'value', IBMA.COPE) %>%
-    select(-value) %>%
+    dplyr::select(-value) %>%
     # Now add the data frame with MA and EstTau (estimated tau) to this
     bind_rows(.,
       MAvsIBMAres %>%
@@ -392,17 +401,17 @@ for(i in 1:nsim){
         mutate(EstVar = value) %>%
         # Rename
         rename(param = parameter) %>%
-        select(-param, -value) %>%
+        dplyr::select(-param, -value, -FLAMEdf_3) %>%
         mutate(parameter = 'MA.WeightedAvg')) %>%
-    mutate(parameter = factor(parameter)) %>%
+    mutate(parameter = factor(parameter, levels = levels(saveParam))) %>%
     # Now have TrueD added instead of TrueSigma
-    left_join(., select(SmParam, voxID, TrueD, TrueSigma), 
-              by = c('voxel' = 'voxID',
-                    'sigma' = 'TrueSigma')) %>%
-    select(-sigma) %>%
+    right_join(., TrueP_S, 
+              by = c('sigma' = 'TrueSigma',
+                    'eta' = 'eta',
+                    'nstud' = 'nstud')) %>%
+    dplyr::select(-sigma, -Nsub, -TrueG, -TrueCOPE) %>%
     # Bind to data frame
     bind_rows(EstVar_all, .)
-  
 }
 
 # Save intermediate results
