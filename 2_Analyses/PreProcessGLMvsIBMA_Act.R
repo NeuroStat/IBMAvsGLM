@@ -123,7 +123,7 @@ NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
 info <- data.frame('Sim' = c(1, 2),
-                   'nsim' = c(1000, 1000),
+                   'nsim' = c(1000, 500),
                    'nsub' = c(trueMCvalues('sim_act', 'nsub'),
                             trueMCvalues('sim_act', 'nsub')))
 nsim <- info[currentWD,'nsim']
@@ -222,12 +222,13 @@ if(!I2){
   eta_vec <- sqrt(trueMCvalues('sim_act', 'TrueSigma2starB1'))
 }
 
-# Data frame of true parameter values
+# Data frame with link between sigma and Cohen's d, will add this to the
+# parameter combinations later on.
+# NOTE: don't add eta here, as there is no link between d and eta!!
 TrueParamDat <- data.frame(Nsub = trueMCvalues('sim_act', 'nsub'),
                            TrueD = trueMCvalues('sim_act', 'TrueD'),
                            TrueSigma = sqrt(trueMCvalues('sim_act', 'TrueSigma2W')),
-                           TrueG = trueMCvalues('sim_act', 'TrueG'),
-                           eta = eta_vec)
+                           TrueG = trueMCvalues('sim_act', 'TrueG'))
 
 # Data frame with combinations of all simulations run
 ParamComb <- expand.grid('TrueSigma' = sqrt(trueMCvalues('sim_act', 'TrueSigma2W')),
@@ -237,7 +238,7 @@ NumPar <- dim(ParamComb)[1]
 
 # Extend the true values with number of studies
 TrueP_S <- TrueParamDat %>% 
-  inner_join(.,ParamComb, by = c('TrueSigma', 'eta')) %>%
+  full_join(.,ParamComb, by = c('TrueSigma')) %>%
   # Add true COPE value
   mutate(TrueCOPE = trueMCvalues('sim_act', 'BOLDC'))
 
