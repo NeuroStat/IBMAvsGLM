@@ -255,7 +255,16 @@ for(i in 1:nsim){
   # First load in the data of this simulation
   MAvsIBMAres <- readRDS(
     paste(DATAwd[[currentWD]],'/ActMAvsIBMA_',i, '.rda', sep='')) 
-	
+  
+  # MAvsIBMAres %>%
+  #   filter(parameter == 'MA.WeightedAvg') %>%
+  #   filter(nstud == 50) %>%
+  #   dplyr::select(-FLAMEdf_3) %>%
+  #   group_by(sigma, eta, nstud) %>%
+  #   summarise(AvgEst = mean(value)) %>%
+  #   left_join(., dplyr::select(TrueP_S, TrueD, TrueSigma, eta), by = c('sigma' = 'TrueSigma',
+  #                                                                 'eta' = 'eta')) %>% View()
+  # 
   #################################
   ###### PROCESSING COVERAGE ######
   #################################

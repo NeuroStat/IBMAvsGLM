@@ -406,9 +406,9 @@ for(p in 1:NumPar){
     # Load in T-map
     STMAP <- readNIfTI(paste(DataWrite,"/study",t,"_stats/tstat1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,]
     # Transform to an ES using hedgeG function, for each study
-    HedgeG <- apply(matrix(STMAP,ncol=1), 1, FUN = hedgeG, N = nsub)
+    HedgeG <- apply(matrix(STMAP,ncol=1), 1, FUN = hedgeG, N = nsub, type = 'exact')
     # Calculate variance of ES
-    VarianceHedgeG <- apply(matrix(HedgeG,ncol=1), 1, FUN = NeuRRoStat::varHedgeT, N = nsub)
+    VarianceHedgeG <- apply(matrix(HedgeG, ncol = 1), 1, FUN = NeuRRoStat::varHedgeT, N = nsub)
     # Weights of this study
     weigFix <- 1/VarianceHedgeG
     # Now put in a vector
@@ -434,8 +434,8 @@ for(p in 1:NumPar){
   ESTTAU <- array(as.vector(mapply(NeuRRoStat::tau, Y = STHEDGEL,
               W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
 
-  # Random effect weights
-  STWEIGHTS_ran <- 1/(STWEIGHTS + array(ESTTAU, dim = c(prod(DIM), nstud)))
+  # Random effect weights: inverse of sum of within- and between-study variability
+  STWEIGHTS_ran <- 1/((1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud)))
 
   # Calculate weighted average.
   MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran), 1, sum))/(apply(STWEIGHTS_ran, 1 ,sum))
