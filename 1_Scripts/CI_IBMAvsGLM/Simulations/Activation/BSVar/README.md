@@ -1,5 +1,12 @@
 # Between-study variability
 
+# Important Note
+
+Data and analyses are incorporated in the overview paper on effect sizes. Hence, sections of this folder will be copied and modified to
+https://github.com/NeuroStat/ESfMRI
+
+# Introduction
+
 Section to try and estimate between-study variability in neuroimaging (focussed on fMRI).
 
 Data is obtained by searching for *"pain"* (at 11/01/2017) in the [neurovault](www.neurovault.org) database and manually checking all results.
