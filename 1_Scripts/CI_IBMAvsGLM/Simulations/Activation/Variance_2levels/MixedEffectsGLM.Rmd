@@ -1,0 +1,303 @@
+---
+title: "Mixed Effects GLM"
+author: "Han Bossier"
+date: "30/7/2018"
+output:
+  pdf_document:
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    df_print: tibble
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	comment = NA,
+	cache = FALSE,
+	warning = FALSE,
+	fig.align='center'
+)
+
+# Load in libraries
+library(AnalyzeFMRI)
+library(lattice)
+library(gridExtra)
+library(oro.nifti)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(reshape2)
+library(lme4)
+library(MASS)
+library(RColorBrewer)
+library(mvmeta)
+library(metafor)
+library(devtools)
+library(neuRosim)
+library(NeuRRoStat)
+library(fMRIGI)
+
+# Raw Data location
+RawDat <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MixedEffGLM/Results'
+```
+
+\pagebreak
+
+# Introduction
+
+This report focusses on estimating the variance of the fixed effects parameters in a mixed effects general linear model. Note that the report called _mixedEffects_ is focused on fMRI time series. Here we generate subjects into classes and use the mixed modeling framework to deal with this structure. 
+
+## Source Code
+
+Monte-Carlo simulations are run on HPC.
+See *mixed_effects_glm.R* and *mixed_effects_glm.sh* for original source code. 
+
+# Data Generating Model
+
+Consider the following linear model for a specific clusters $i = 1, \ldots, K$ (in our case a class which will contain subjects):
+\begin{align}
+\mathbf{Y_i} &= \mathbf{X_i}\boldsymbol\beta + \mathbf{Z_iu_i} + \boldsymbol\varepsilon_i \\
+\mathbf{u_i} &\sim N(\mathbf{0}, \mathbf{D}) \\
+\boldsymbol\varepsilon_i & \sim N(\mathbf{0}, \sigma^2_wI),
+\end{align}
+where:
+
+* $\mathbf{Y_i}$ is the response vector of dimension $n_i \times 1$ where $n_i$ is the sample size in cluster/class $i$
+* $\mathbf{X_i}$ is the $n_i \times p$ model matrix for the fixed effects with $p$ the number of predictors including the intercept
+* $\boldsymbol\beta$ is the $p \times 1$ vector of fixed effects coefficients
+* $\mathbf{Z_i}$ is the $n_i \times q$ model matrix for the random effects where $q$ equals the number of random effect parameters
+* $\mathbf{u_i}$ is the $q \times 1$ vector of random effect coefficients
+* $\boldsymbol\varepsilon_i$ is the $n_i \times 1$ vector of error terms
+
+One can combine all clusters into:
+\begin{align}
+\mathbf{Y} = \mathbf{X}\boldsymbol\beta + \mathbf{Xu} + \boldsymbol\varepsilon
+\end{align}
+
+We will generate data using one continuous predictor and two random effects (one for the intercept and one for the effect of X on Y, $q = 2$). Hence, the $q \times q$ variance-covariance matrix of the random effects ($\mathbf{D}$) equals:
+\begin{align}
+\mathbf{D} = 
+\begin{bmatrix}
+\sigma^2_{b0} & 0 \\
+0 & \sigma^2_{b1}.
+\end{bmatrix}
+\end{align}
+
+In this report, we set $\sigma^2_{b0} = 1$ and $\sigma^2_{b1} = 2$. Note that we generate data with homogeneous error variances where we set $\sigma^2_w = 1$. We will have 40 classes ($K = 40$) and 50 subjects within each class ($n_i = 50$ for all $i = 1, \ldots, K$). Furthermore, we set $\beta_0 = 5$ and $\beta1 = 2$ in the $\boldsymbol\beta$ vector. 
+
+
+For the Monte-Carlo simulations, we will generate the entire $\mathbf{u}$ matrix beforehand. Hence in **R**, we have the following true (parameter) values and $\mathbf{u}$:
+
+```{r 'parameter-values'}
+# Class and sample size
+numclass <- 40
+NinClass <- 50
+
+# Fixed effects parameters
+beta0 <- 5
+beta1 <- 2
+
+# Random effects parameters
+sigma_e <- 1
+sigmab0 <- 1
+sigmab1 <- 2
+
+# Generate the variance covariance matrix of the random effects
+var_cov_U <- rbind(c(sigmab0**2, 0), c(0, sigmab1**2))
+# Generate the values for b0 and b1
+B_matrix <- MASS::mvrnorm(numclass, mu = c(0,0), Sigma = var_cov_U)
+```
+
+
+# Variance of Fixed Effects Parameters
+
+To estimate the variances of the fixed effect parameters ($\mathbf{\beta}$), we first define the variance-covariance matrix of the observed responses for class $i$, $\text{Var}(\mathbf{Y}_i)$:
+\begin{align}
+\text{Var}(\mathbf{Y}_i) = \mathbf{V_i} = \mathbf{Z_i}\mathbf{D}\mathbf{Z_i}' + \sigma^2_wI
+\end{align}
+
+Then the variance-covariance matrix of the fixed effect parameters is given by:
+\begin{align}
+\text{Var}(\boldsymbol\beta) = (\sum_{i=1}^K\mathbf{X}_i\mathbf{V}^{-1}\mathbf{X_i})^{-1}.
+\end{align}
+
+In order to calculate the true variance-covariance matrix of our fixed effect parameters, we hence need to generate all responses in each Monte-Carlo simulation run beforehand. In **R**, this is:
+
+```{r 'prepare-var-covar-fix-eff'}
+# First we create empty vectors for X and V, as well as an empty matrix
+# for the variance-covariance matrices of the fixed effects.
+ComplX <- ComplV <- matrix(NA,nrow = 1, ncol = 1)
+VarCovBeta_raw <- matrix(0, ncol = 2, nrow = 2)
+Xlist <- Zlist <- list()
+
+# Pre-define the true variance-covariance matrix for fixed effects parameters
+for(i in 1:numclass){
+  # Predictors for this class
+  X <- cbind(1, round(runif(n = NinClass, min = 1, max = 20)))
+  
+  # Z-matrix for this class
+  Z <- X
+  
+  # V-matrix
+  V <- Z %*% var_cov_U %*% t(Z) +
+    diag(sigma_e**2, NinClass)
+  
+  # Part of var-covar-beta matrix
+  VarCovBeta_raw <- VarCovBeta_raw + t(X) %*% solve(V) %*% X
+  
+  # Save X and Z
+  Xlist[[i]] <- X
+  Zlist[[i]] <- Z
+}
+```
+
+While summing in each class, we get the final true variance covariance matrix for the fixed effects parameters:
+```{r 'var-covar-fix-eff'}
+# Now calculate true variance-covariance matrix
+VarCovBeta <- solve(VarCovBeta_raw)
+VarCovBeta
+
+# Standard error of beta = sqrt(var(beta))
+SEBeta <- data.frame('term' = c('(Intercept)', 'X'),
+                     'TrueSE' = sqrt(diag(VarCovBeta)), 
+                     stringsAsFactors = FALSE)
+SEBeta
+```
+
+
+# Monte-Carlo Simulation
+
+The **R** script is run on the HPC infastructure. Therefore, I show the code here for one run. We refer to the file *mixed_effects_glm.R* and *mixed_effects_glm.sh* for the original source code. 
+
+```{r 'one-run'}
+# Empty data frame with simulation results
+FitTotDat <- data.frame() %>% as_tibble()
+
+# For loop over ONE simulation
+for(r in 1:1){
+  # Set starting seed
+  starting.seed <- pi*r
+  set.seed(starting.seed)
+  
+  # Empty data frame
+  TotDat <- data.frame()
+  
+  # Loop over the classes
+  for(i in 1:numclass){
+      # Loop over the subjects
+      for(j in 1:NinClass){
+      # Generate data using: X*beta + Z*u + e
+        dat <- Xlist[[i]] %*% matrix(c(beta0, beta1), ncol = 1) + 
+          Zlist[[i]] %*% matrix(c(B_matrix[i,1], B_matrix[i,2]), ncol = 1) +
+          rnorm(n = NinClass, mean = 0, sd = sigma_e)
+      
+      # Add to data frame
+      TotDat <- data.frame(Y = dat, X = Xlist[[i]][,2], class = i) %>% as_tibble() %>%
+        bind_rows(TotDat,.)
+    }
+  }
+  
+  # Analysis
+  fit <- lmer(Y ~ 1 + X + (1 + X|class), data = TotDat, REML = TRUE)
+  FitTotDat <- broom::tidy(fit) %>% 
+    # Add true SE
+    left_join(.,SEBeta, by = 'term') %>%
+    mutate(sim = r) %>%
+    bind_rows(FitTotDat,.)
+}
+```
+
+Note that the analysis consist of fitting a random effects intercept and slope model using *lmer* and *REML*.
+
+For instance, we have in this Monte-Carlo simulation run:
+```{r 'one-analysis'}
+head(TotDat)
+fit <- lmer(Y ~ 1 + X + (1 + X|class), data = TotDat, REML = TRUE)
+summary(fit)
+```
+
+# Analysis
+
+We pull the data and look at the asymptotic properties after having run 1000 Monte-Carlo simulation runs (100 batches of 10 runs).
+
+```{r 'raw-data'}
+# Number of batches
+nsim <- 100
+
+# Empty data frame
+FitTotDat <- data.frame() %>% as_tibble()
+
+# Read in data
+for(i in 1:nsim){
+  FitTotDat <- readRDS(paste(RawDat, '/MixEffglm_', i, '.rda', sep = '')) %>%
+    bind_rows(FitTotDat, .)
+}
+```
+
+## Fixed Effects Parameters
+
+First we have a look at the fixed effect parameters and its estimated variances. 
+We filter out the intercept and the predictor $X$ (i.e. the fixed effects part), then add the true parameter values for $\boldsymbol\beta$ and summarise over Monte-Carlo simulation runs.
+We take the average over the estimates as well as the average estimated standard error (which is the square root of the variance of the fixed effects parameter estimates).
+```{r 'fix-eff-results'}
+FitTotDat %>% 
+  filter(term %in% c('(Intercept)', 'X')) %>%
+  # Add true values
+  left_join(.,data.frame(term = c('(Intercept)', 'X'),
+                         TrueEst = c(beta0, beta1), stringsAsFactors = FALSE),
+            by = 'term') %>%
+  group_by(term) %>%
+  summarise(AvgEst = mean(estimate),
+            TrueEst = mean(TrueEst),
+            AvgSE = mean(std.error),
+            TrueSE = mean(TrueSE))
+```
+
+
+## Random Effects Parameters
+
+Finally, let us check the random effects parameters. We filter out the estimated standard deviations of the residuals, the random intercept and the random slope. Then we join the true values we used in the data generating model. Afterwards we average the standard deviations over all simulations.
+```{r 'ran-eff-results'}
+FitTotDat %>% 
+  filter(term %in% c('sd_Observation.Residual',
+                     'sd_(Intercept).class',
+                     'sd_X.class')) %>%
+  dplyr::select(term, estimate, sim) %>%
+  left_join(.,data.frame('term' = c('sd_Observation.Residual',
+                                    'sd_(Intercept).class',
+                                    'sd_X.class'),
+                         'TrueSD_ran' = c(sigma_e, sigmab0, sigmab1),
+                         stringsAsFactors = FALSE),
+            by = 'term') %>%
+  group_by(term) %>%
+  summarise(AvgEst = mean(estimate),
+            AvgTrueSD = mean(TrueSD_ran))
+```
+
+
+# Conclusion
+
+It seems pretty good (for once)! :-)
+Now go and generate fMRI time series using this approach!
+
+# Session
+
+```{r 'session'}
+sessionInfo()
+```
+
+
+
+
+
+
+
+
+
+
