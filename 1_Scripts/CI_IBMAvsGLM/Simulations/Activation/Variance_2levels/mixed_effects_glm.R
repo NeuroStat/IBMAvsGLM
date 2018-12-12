@@ -13,10 +13,15 @@
 ###############
 ##
 
-
 # Generate data of N subjects each in M classes.
 # Fit a linear mixed model and save the parameters.
-# Are we able to extract the true values?
+# Are we able to extract the true values of the variance-covariance matrix
+# of the fixed effects?
+
+# The approach is to create the predictors for all subjects in all classes
+# at the beginning. Then loop over all classes.
+# The variance-covariance matrix of the fixed effects is calculated through:
+# (sum over class of X'V^tX)^t
 
 
 ##
@@ -25,8 +30,33 @@
 ###############
 ##
 
-# Seed
-set.seed(1473)
+# Take argument from master file
+input <- commandArgs(TRUE)
+# K'th simulation
+hpcID <- try(as.numeric(as.character(input)[1]),silent=TRUE)
+# Which machine
+MACHINE <- try(as.character(input)[2],silent=TRUE)
+
+# If no machine is specified, then it has to be this machine!
+if(is.na(MACHINE)){
+  MACHINE <- 'MAC'
+  hpcID <- 1
+}
+
+# Implement for loop over r iterations here: hpcID goes from 1 to 100 in master file
+rIter <- 10
+startIndex <- try(1 + rIter * (hpcID - 1), silent = TRUE)
+endIndex <- try(startIndex + (rIter - 1), silent = TRUE)
+
+# Set WD: this is location where results are written
+if(MACHINE=='HPC'){
+  wd <- '/user/scratch/gent/gvo000/gvo00022/vsc40728/MixedEffGLM/'
+}
+if(MACHINE=='MAC'){
+  #wd <- '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Variance_2lvl/'
+  wd <- '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/Variance_2levels/ResultsMixEffglm/'
+}
+
 
 # Load in libraries
 library(AnalyzeFMRI)
@@ -44,7 +74,6 @@ library(RColorBrewer)
 library(mvmeta)
 library(metafor)
 library(devtools)
-library(Matrix)
 library(neuRosim)
 library(NeuRRoStat)
 library(fMRIGI)
@@ -61,9 +90,6 @@ library(fMRIGI)
 ### Simulation parameters
 ###############
 ##
-
-# Number of simulations
-nsim <- 500
 
 # True values
 ## Class and sample size
@@ -84,22 +110,13 @@ var_cov_U <- rbind(c(sigmab0**2, 0), c(0, sigmab1**2))
 # Generate the values for b0 and b1
 B_matrix <- MASS::mvrnorm(numclass, mu = c(0,0), Sigma = var_cov_U)
 
-
-# Generate the predictors of all participants
-X <- round(runif(n = NinClass * numclass, min = 1, max = 20))
-X <- rep(list(cbind(1, round(runif(n = NinClass, min = 1, max = 20)))), numclass)
-
-# Z-matrix: block diagonal of individual X's
-ComplZ <- as.matrix(bdiag(X))
-
-# The V matrix equals: ZDZ' + R
-ComplV <- ComplZ %*% var_cov_U %*% t(ComplZ)
-
-
+# First we create empty vectors for X and V, as well as an empty matrix
+# for the variance-covariance matrices of the fixed effects.
 ComplX <- ComplV <- matrix(NA,nrow = 1, ncol = 1)
 VarCovBeta_raw <- matrix(0, ncol = 2, nrow = 2)
 Xlist <- Zlist <- list()
-# True variance-covariance matrix for fixed effects parameters
+
+# Pre-define the true variance-covariance matrix for fixed effects parameters
 for(i in 1:numclass){
   # Predictors for this class
   X <- cbind(1, round(runif(n = NinClass, min = 1, max = 20)))
@@ -114,33 +131,18 @@ for(i in 1:numclass){
   # Part of var-covar-beta matrix
   VarCovBeta_raw <- VarCovBeta_raw + t(X) %*% solve(V) %*% X
   
-  # Add X and V to supermatrix
-  #ComplX <- as.matrix(bdiag(ComplX,X))
-  #ComplV <- as.matrix(bdiag(ComplV,V))
-  
   # Save X and Z
   Xlist[[i]] <- X
   Zlist[[i]] <- Z
 }
-# Remove NA row in ComplX and ComplV
-#ComplX <- ComplX[-1,-1]
-#ComplV <- ComplV[-1,-1]
 
 # Now calculate true variance-covariance matrix
-#VarCovBeta <- solve(t(ComplX) %*% solve(ComplV) %*% ComplX)
 VarCovBeta <- solve(VarCovBeta_raw)
-
-# The true variance-covariance matrix of the parameter estimates 
-# of the fixed effects then becomes:
-#TrueV <- cbind(1,X) %*% var_cov_U %*% t(cbind(1,X)) +
-  diag(sigma_e**2, NinClass)
-#VarCovBeta <- solve(numclass * t(cbind(1,X)) %*% solve(TrueV) %*% cbind(1,X))
 
 # Standard error of beta = sqrt(var(beta))
 SEBeta <- data.frame('term' = c('(Intercept)', 'X'),
                      'TrueSE' = sqrt(diag(VarCovBeta)), 
                      stringsAsFactors = FALSE)
-
 
 ##
 ###############
@@ -152,36 +154,19 @@ SEBeta <- data.frame('term' = c('(Intercept)', 'X'),
 FitTotDat <- data.frame() %>% as_tibble()
 
 # For loop over the simulations
-for(r in 1:nsim){
-  # Print simulation
-  print(r)
+for(r in startIndex:endIndex){
+  # Set starting seed
+  starting.seed <- pi*r
+  set.seed(starting.seed)
   
   # Empty data frame
   TotDat <- data.frame()
   
-  # Empty true var-covar matrix of fixed parameter estimates
-  # VarCovBeta <- diag(0,2)
-  
   # Loop over the classes
   for(i in 1:numclass){
-    
-      # Generate predictor for subjects in this class
-      # X <- runif(n = NinClass, min = 1, max = 20)
-      
-      # Calculate non-inverted true variance-covariance matrix for this class
-      # TrueV <- cbind(1,X) %*% var_cov_U %*% t(cbind(1,X)) +
-      #   diag(sigma_e**2, NinClass)
-      # # Also: add it to all subjects (later on invert it)
-      # VarCovBeta <- t(cbind(1,X)) %*% solve(TrueV) %*% cbind(1,X) +
-      #   VarCovBeta
-
       # Loop over the subjects
       for(j in 1:NinClass){
       # Generate data using: X*beta + Z*u + e
-      # dat <- cbind(1,X) %*% matrix(c(beta0, beta1), ncol = 1) + 
-      #   cbind(1,X) %*% matrix(c(B_matrix[i,1], B_matrix[i,2]), ncol = 1) +
-      #   rnorm(n = NinClass, mean = 0, sd = sigma_e)
-        
         dat <- Xlist[[i]] %*% matrix(c(beta0, beta1), ncol = 1) + 
           Zlist[[i]] %*% matrix(c(B_matrix[i,1], B_matrix[i,2]), ncol = 1) +
           rnorm(n = NinClass, mean = 0, sd = sigma_e)
@@ -192,13 +177,6 @@ for(r in 1:nsim){
     }
   }
   
-  # Invert the true variance-covariance matrix
-  # VarCovBetaT <- solve(VarCovBeta)
-  
-  # Standard error of beta = sqrt(var(beta))
-  # SEBeta <- data.frame('term' = c('(Intercept)', 'X'),
-  #            'TrueSE' = sqrt(diag(VarCovBetaT)), stringsAsFactors = FALSE)
-  
   # Analysis
   fit <- lmer(Y ~ 1 + X + (1 + X|class), data = TotDat, REML = TRUE)
   FitTotDat <- broom::tidy(fit) %>% 
@@ -206,8 +184,10 @@ for(r in 1:nsim){
     left_join(.,SEBeta, by = 'term') %>%
     mutate(sim = r) %>%
     bind_rows(FitTotDat,.)
-   
 }
+
+# Save R object
+saveRDS(FitTotDat, file = paste0(wd, 'Results/MixEffglm_', hpcID, '.rda'))
 
 
 ##

@@ -73,11 +73,11 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
                          TR = TR, acc=0.1, hrf="double-gamma")
 
     # Generate time series for ONE active voxel: predicted signal from design matrix
-    pred <- neuRosim::simTSfmri(design=X, base=100, SNR=1, noise="none", verbose=FALSE)
+    pred <- neuRosim::simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
     # plot(pred, type = 'l')
 
     # Extend the design matrix with an intercept
-    xIN <- cbind(1,pred)
+    xIN <- cbind(base,pred)
 
     # Contrast: not interested in intercept
     CONTRAST <- matrix(c(0,1),nrow=1)
@@ -114,9 +114,12 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
       # Work this out and you get:
     TrueSigma2B1 <- TrueSigmaG^2/3
     TrueSigma2W <- (2*TrueSigmaG^2 / 3) / c(design_factor)
+    # Written otherwise: solve(design_factor) %*% (TrueSigmaG^2 - (TrueSigmaG^2/3))
     # NOTE: TrueSigma2B1 corresponds to variance of the random slopes between-subjects
     #   We also want a random intercept (B0), variance = 1
     TrueSigma2B0 <- 1
+    # CHECK: TrueSigma2B1 / (design_factor %*% TrueSigma2W)
+    # CHECK: (design_factor %*% TrueSigma2W + TrueSigma2B1) == TrueSigmaG^2
 
     # Hence the variance-covariance at subject level (SIGMA) equals:
     SIGMA <- list(diag(c(TrueSigma2B0, TrueSigma2B1[1])),

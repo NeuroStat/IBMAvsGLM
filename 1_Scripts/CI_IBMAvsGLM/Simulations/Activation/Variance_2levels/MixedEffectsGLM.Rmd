@@ -77,7 +77,7 @@ where:
 
 One can combine all clusters into:
 \begin{align}
-\mathbf{Y} = \mathbf{X}\boldsymbol\beta + \mathbf{Xu} + \boldsymbol\varepsilon
+\mathbf{Y} = \mathbf{X}\boldsymbol\beta + \mathbf{Zu} + \boldsymbol\varepsilon
 \end{align}
 
 We will generate data using one continuous predictor and two random effects (one for the intercept and one for the effect of X on Y, $q = 2$). Hence, the $q \times q$ variance-covariance matrix of the random effects ($\mathbf{D}$) equals:
