@@ -1,0 +1,283 @@
+---
+title: "Mixed Effects Model"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r "setup", include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	comment = NA,
+	cache = FALSE,
+	warning = FALSE,
+	fig.align='center'
+)
+
+# Libraries
+library(AnalyzeFMRI)
+library(lattice)
+library(gridExtra)
+library(oro.nifti)
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(knitr)
+library(tidyr)
+library(reshape2)
+library(lme4)
+library(MASS)
+library(RColorBrewer)
+library(mvmeta)
+library(metafor)
+library(devtools)
+library(neuRosim)
+library(NeuRRoStat)
+library(fMRIGI)
+```
+
+
+# Introduction
+
+Generate data using random intercept and slope model. Fit mixed model using _lmer_ and extract the variance of the random slopes. Compare with true value.
+
+Some general parameters:
+```{r 'general-parameters'}
+# Number of simulations
+nsim <- 1000
+```
+
+## Data
+
+Data will be time series of length $T$ for each subject $i = 1, \dots,  N$ with $N = 50$. Hence we have repeated measures within subjects.
+More formally, we use the following GLM:
+$$
+Y_i = (\beta_0 + b_{0i}) + (\beta_1 + b_{1i})X + \varepsilon_i,
+$$
+with $b_{0i} \sim N(0, 1)$, $b_{1i} \sim N(0, \sigma^2_{b})$ and $\varepsilon_i \sim N(0, \sigma^2_e)$. 
+We see that we use the same design matrix $X$ for each subject and we only generate Gaussian random (white) noise. Furthermore, we set $\sigma^2_{b} = \in \{0,5^2\}$ and $\sigma^2_{e} = 6^2$. Finally, we have $\beta_0 = 100$ and $\beta_1 = 3$. 
+
+Note that we run the simulations two times for two values of $\sigma^2_{b}$!
+
+## True values
+
+The true values are hence:
+```{r 'true-values'}
+# Number of subjects
+nsub <- 50
+
+# True beta's
+BETA0 <- 100
+BETA1 <- 3
+
+# Value for sigma, sigma of random slopes and intercepts
+sigma_eps <- 6
+sigma_b1 <- 1
+sigma_b2 <- c(0,5)
+```
+Next, we set some parameters for the time series:
+```{r 'time-series-parameters'}
+# Signal characteristics
+TR <- 2
+nscan <- 200
+total <- TR*nscan
+on1 <- seq(1,total,40)
+onsets <- list(on1)
+duration <- list(20)
+
+#######################################
+#### DESIGN AND SIGNAL TIME SERIES ####
+#######################################
+
+# Generating a design matrix: convolution of block design with double-gamma HRF
+X <- neuRosim::simprepTemporal(total,1,onsets = onsets,
+                               effectsize = 1, durations = duration,
+                               TR = TR, acc = 0.1, hrf = "double-gamma")
+
+# X vector for one subject = predicted signal
+X_s <- neuRosim::simTSfmri(design=X, base=0, SNR=1, noise="none", verbose=FALSE)
+```
+
+### Variance of parameter estimates
+
+Let us calculate the variances of $\beta_1$. We do this following:
+
+
+
+```{r 'true-var-beta1'}
+# Calculate the true var(beta1)
+TrueVarCovBeta <- data.frame() %>% as_tibble()
+
+# Loop over the values for sigma of random slope
+for(j in 1:length(sigma_b2)){
+  var_cov_D_l <- rbind(c(sigma_b1**2, 0), c(0, sigma_b2[j]**2))
+  # True variance-covariance matrix of beta
+  V_mat <- cbind(1,X_s) %*% var_cov_D_l %*% t(cbind(1,X_s)) + 
+    diag(sigma_eps^2, nrow = nscan)
+  varCovBeta <- solve(t(cbind(1,X_s)) %*% solve(V_mat) %*% cbind(1,X_s))
+  # Add to data frame
+  TrueVarCovBeta <- data.frame(True_sigma_b1 = sigma_b2[j],
+             True_var_beta1 = varCovBeta[2,2]) %>%
+    bind_rows(TrueVarCovBeta,.)
+}
+
+var_cov_D_l <- rbind(c(sigma_b1**2, 0), c(0, sigma_b2[2]**2))
+# True variance-covariance matrix of beta
+V_mat <- cbind(1,X_s) %*% var_cov_D_l %*% t(cbind(1,X_s)) + 
+  diag(sigma_eps^2, nrow = nscan)
+t(matrix(X_s, ncol = 1)) %*% solve(V_mat) %*% matrix(X_s, ncol = 1)
+
+varCovBeta <- solve(t(cbind(1,X_s)) %*% solve(V_mat) %*% cbind(1,X_s))
+```
+
+
+## Example data
+
+Let us generate the time series all subject. To generate random intercept and slopes, we first generate subject-specific values for $b_{i0}$ and $b_{1i}$ where we set $\sigma^2_b = 5^2$ using a variance-covariance matrix:
+
+```{r 'var-covar-D'}
+var_cov_D <- rbind(c(sigma_b1**2, 0), c(0, sigma_b2[2]**2))
+
+# Generate the subject-specific values for intercept and slope using this D-matrix
+B_matrix <- MASS::mvrnorm(nsub, mu=c(0,0), Sigma = var_cov_D)
+```
+
+Now looping over all subjects, we have:
+```{r 'one-time-series'}
+# Empty vector
+Y <- data.frame() %>% as_tibble()
+
+# For loop over all subjects
+for(i in 1:nsub){
+  # Generate nscan values, corresponding to time series of one subject 
+    # note: random intercept and random slope generated earlier
+  Y_s <- (BETA0 + B_matrix[i,1]) + ((BETA1 + B_matrix[i,2]) * X_s) + 
+    rnorm(n = nscan, mean = 0, sd = sigma_eps)
+  
+  # Add to data frame
+  Y <- data.frame(Y = Y_s, X = X_s, sub = as.integer(i)) %>% as_tibble() %>%
+    bind_rows(Y, .)
+}
+```
+
+Let us plot the time series for one subject (red line is true response for this subject).
+```{r 'plot-time-series', fig.align = 'center'}
+plot(Y_s, type = 'l', main = 'Example of one time series for the last subject',
+     xlab = 'Time')
+lines(x = ((BETA0 + B_matrix[nsub,1]) + ((BETA1 + B_matrix[nsub,2]) * X_s)), col = 'red')
+```
+
+The analysis of the time series of all $N$ subjects using **R** is straightforward:
+```{r 'analysis-R', eval = TRUE}
+lmer(Y ~ 1 + X + (1 + X|sub), data = Y, REML = TRUE)
+```
+
+# Monte-Carlo
+
+Now we run the data generating model for $l = 1000$ times and save the estimated parameters.
+
+
+```{r 'MC', cache=TRUE}
+# Degrees of freedom on second level
+tdof_t1 <- nsub - 1
+
+# Empty lmer results data frame
+LMER_res <- comb_res <- data.frame() %>% as_tibble()
+
+# Set seed
+set.seed(1990)
+
+# For loop over the simulations
+for(ID in 1:nsim){
+  # For loop over the two random slope variance parameters.
+  for(k in 1:length(sigma_b2)){
+    # Generate D matrix: variance-covariance matrix of random intercept + slope
+    # Variance of slope = sigma_b**2
+    # Select correct slope parameter
+    var_cov_D <- rbind(c(sigma_b1**2, 0), c(0, sigma_b2[k]**2))
+    
+    # Generate the subject-specific values for intercept and slope using this D-matrix
+    B_matrix <- MASS::mvrnorm(nsub, mu=c(0,0), Sigma = var_cov_D)
+    
+    # Empty vector
+    Y <- data.frame() %>% as_tibble()
+    
+    # For loop over all subjects
+    for(i in 1:nsub){
+      # Generate nscan values, corresponding to time series of one subject 
+        # note: random intercept and random slope generated earlier
+      Y_s <- (BETA0 + B_matrix[i,1]) + ((BETA1 + B_matrix[i,2]) * X_s) + 
+      rnorm(n = nscan, mean = 0, sd = sigma_eps)
+      
+      # Add to data frame
+      Y <- data.frame(Y = Y_s, X = X_s, sub = as.integer(i)) %>% as_tibble() %>%
+        bind_rows(Y, .)
+    }
+    
+    #############################################
+    #### LINEAR MIXED MODEL APPROACH USING R ####
+    #############################################
+    
+    # Fit model with random intercept and random slope for subject.
+    # Get coefficients using tidy.
+    LMER_results <- broom::tidy(lmer(Y ~ 1 + X + (1 + X|sub), data = Y)) %>%
+      as_tibble() %>% mutate(sim = ID) 
+    
+    ############################################################
+    #### CONSRUCT 95% CONFIDENCE INTERVALS AND CALCULATE EC ####
+    ############################################################
+    LMER_res <-
+      LMER_results %>% filter(term == 'X') %>%
+      dplyr::select(term, estimate, std.error) %>%
+      # CI around beta: using std.error of parameter!
+      mutate(CIlow = estimate - qt(0.975, df = tdof_t1) * std.error,
+             CIup = estimate + qt(0.975, df = tdof_t1) * std.error) %>%
+      mutate(EC = ifelse(BETA1 >= CIlow & BETA1 <= CIup, 1, 0)) %>%
+      # Now select the estimate of between-subject variability (SD)
+      mutate(sd_X.sub = unlist(LMER_results %>% filter(term == 'sd_X.sub') %>%
+               dplyr::select(estimate))) %>%
+      # Add variance of parameter estimate (VARCOPE)
+      mutate(variance = std.error^2) %>%
+      # re-arrange
+      dplyr::select(estimate, std.error, variance, sd_X.sub, CIlow, CIup, EC) %>%
+      # Rename
+      rename(estimate = estimate, SE_beta = std.error, variance = variance,
+             SD_bsub = sd_X.sub, CIlow = CIlow, CIup = CIup, EC = EC) %>%
+      # Add info about random slope variance and simulation number
+      mutate(True_sigma_b1 = sigma_b2[k],type = 'LMER', simID = ID)
+    
+    # Combine in data frame
+    comb_res <- bind_rows(comb_res, LMER_res)
+  }
+}
+```
+
+
+# Results
+
+We can now check:
+
+* the average of the $\beta_1$ estimates, should be ```r BETA1 ```
+* the empirical variance of the $\beta_1$ estimates (variance over Monte-Carlo simulations)
+* the average of the estimated variance of $\beta_1$ (average over simulations of $Var(\beta_1$)).
+* the average estimated between-subject variability. It should approach ```r sigma_b2```.
+* the empirical coverage of the 95% CI around the true value of $\beta_1$.
+
+```{r 'check-variance'}
+comb_res %>% group_by(True_sigma_b1) %>%
+  summarise(Avg_beta = mean(estimate),
+            Obs_var_beta = var(estimate),
+            Avg_var_beta = mean(variance),
+            Avg_sd_bsub = mean(SD_bsub),
+            EC = mean(EC)) %>%
+  # Add info of true var(beta1)
+  left_join(., TrueVarCovBeta, by = 'True_sigma_b1') %>%
+  #Re-arrange
+  ungroup() %>%
+  dplyr::select(True_sigma_b1, Avg_sd_bsub, Avg_beta, True_var_beta1, Obs_var_beta,
+                Avg_var_beta, EC) %>%
+  # Print to table
+  kable(., caption = 'Results of Monte-Carlo simulation study', digits = 3)
+```
+
