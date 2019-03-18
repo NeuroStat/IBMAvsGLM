@@ -1,0 +1,273 @@
+---
+title: "Simulate effect sizes"
+author: "Han Bossier"
+date: "11/3/2019"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+editor_options:
+  chunk_output_type: console
+---
+
+```{r "setup", include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	comment = NA,
+	warning = FALSE,
+	fig.align='center'
+)
+
+# Libraries
+library(metafor)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(NeuRRoStat)
+
+# Custom functions
+# Estimator for B
+EstB <- function(X, W, Y){
+  estimate <- solve(t(X) %*% W %*% X) %*% t(X) %*% W %*% Y
+  return(estimate)
+}
+
+# Seed
+set.seed(245)
+```
+
+## Introduction
+
+In this report, we look at estimators for the population effect at the meta-analysis level.
+We generate effect sizes at the study level and then fit a random effects model.
+We estimate the between study heterogeneity using the DerSimonian \& Laird estimator, the Hedges' estimator and Restricted Maximum Likelihood. 
+These estimates are used to estimate the population effect.
+We will increase the amount of between-study heterogeneity to see its effect on the estimates of the population effect. 
+
+## Data generating model 
+
+Consider an observed (standardized) effect $Y_i$ for study $i = 1, \ldots, K$. We assume the following model:
+
+$$
+Y_i = X\beta +u_i + \varepsilon_i,
+$$
+where 
+$$
+u_i \sim N\left(0, \sigma^{2}_*\right) \\
+\varepsilon_i \sim N\left(0, \sigma^{2}_i\right).
+$$
+Here $\beta$ represents the population effect, $X$ the design matrix at the meta-analysis level, $u$ a random effect and $\varepsilon$ a within-study error. Note that $X$ will be a vector of length $K$ with 1's. 
+
+## Model parameters
+
+We set $\beta = 0.9$ and let the between-study variance ($\sigma^2_*$) increase in 4 Monte-Carlo simulation settings. More particularly, we have: $\sigma^2_* \in \{0, 1, 4, 9\}$. We set the number of studies $K$ to 500.
+```{r 'model-parameters-1'}
+# True ES
+Tes <- 0.9
+# Number of studies
+nstud <- 500
+# X vector of 1's
+X <- matrix(1, nrow = nstud)
+# Between study variability
+sigm2U <- c(0, 1, 4, 9)
+```
+
+To select the within-study variance components of each study, we do the following.
+First we sample a number of subjects for each study. This is a number between $50$ and $100$.
+Using this sample size and the true value for $\beta$ (the population effect size), we calculate the true within-study variance for each study (i.e. $\sigma^2_i$). 
+
+```{r 'model-parameters-wstud'}
+# Sample number of subjects
+nsubS <- sample(x = 100:300, size = nstud, replace = TRUE)
+  # Alternative: each study the same sample size
+  #nsubS <- rep(30, nstud)
+# Calculate true value for the variance
+sigm2E <- NeuRRoStat::varHedgeT(g = Tes, N = nsubS)
+```
+
+> Note that we have a large number of subjects and studies which is needed to see if we have unbiased estimates.
+
+## Model estimation
+
+We use the **R** package ```metafor``` to fit the random-effects models. To esimate $\sigma^2_*$, we will use the DerSimonian \& Laird esimtator, the Hedges' estimator and a Restricted Maximimum Likelihood approach. Note that the model fitting procedure uses weights where these are the inverse of the sum of the within- and estimated between-study variability.
+Furthermore, we use the ```NeuRRoStat``` package to estimate $\sigma^2_*$ with the DerSimonian \& Laird estimator. However, I checked its result and it is equal to the one using the ```metafor``` package. 
+
+## Monte-Carlo
+
+### Settings
+
+We set the number of simulations to $10.000$.
+
+```{r 'settings-MC'}
+# Number of simulations
+nsim <- 1000
+```
+
+We loop over the 4 possible values for the between-study herogeneity. The following code in **R** is an example of one simulation iteration for one value for $\sigma^2_*$ (e.g. $j = 1$). We generate $K$ effect sizes, then calculate the within-study variance (using the formula of Hedges) of each effect size.
+
+```{r 'example-R', eval=FALSE}
+# Generate data
+Y <- X %*% Tes + rnorm(n = nstud, mean = 0, sd = sqrt(sigm2U[j])) +
+  rnorm(n = nstud, mean = 0, sd = sqrt(sigm2E))
+
+# Weights of each study
+vi <- NeuRRoStat::varHedgeT(g = Y, N = nsubS) 
+```
+
+
+### Execution
+
+Here we run the simulation.
+
+```{r 'Monte-Carlo', cache=TRUE, cache.rebuild=FALSE}
+# Empty data frame
+results <- data.frame() %>% 
+  as_tibble()
+
+# For loop over the simulations
+for(i in 1:nsim){
+  # For loop over the amount of between-study heterogeneity
+  for(j in 1:length(sigm2U)){
+    # Generate data
+    Y <- X %*% Tes + rnorm(n = nstud, mean = 0, sd = sqrt(sigm2U[j])) +
+      rnorm(n = nstud, mean = 0, sd = sqrt(sigm2E))
+
+    # Weights of each study
+    vi <- NeuRRoStat::varHedgeT(g = Y, N = nsubS)    
+
+    # Fit the model using rma + HE or REML estimator for tau2
+    fitHE <- metafor::rma(yi = Y, vi = vi, method = 'HE')
+    fitREML <- metafor::rma(yi = Y, vi = vi, method = 'REML')
+
+    # Between study variability: DL estimator
+    tau2_DL <- NeuRRoStat::tau(Y = Y, W = (1/vi), k = length(Y))
+    # HE estimator
+    tau2_HE <- c(fitHE$tau2)
+    # REML estimator
+    tau2_REML <- c(fitREML$tau2)
+
+    # Weights
+    W <- diag(c(1/(vi + tau2_DL)))
+
+    # Estimate for B using various estimators for tau
+    # First one = DerSimonian and Laird
+    B_DL <- EstB(X = X, W = W, Y = Y)
+      # controle: rma(yi = Y, vi = vi, method = 'DL') --> klopt
+    # One using Hedges
+    B_HE <- c(fitHE$beta)
+    # One using REML
+    B_REML <- c(fitREML$beta)
+
+    # Save in data frame
+    results <- data.frame('B' = c(B_DL, B_HE, B_REML),
+              'TrueB' = Tes,
+              'tau2' = c(tau2_DL, tau2_HE, tau2_REML),
+              'TrueTau2' = sigm2U[j],
+              'estimatorBS' = c('DL', 'HE', 'REML')
+               ) %>% as_tibble() %>%
+      bind_rows(results, .)
+  }
+}
+```
+
+
+## Results
+
+### Estimator for population effect 
+
+We will first plot the average (over all simulations) of the estimates for $\beta$. We do this for each value of between-study variability and each of the three estimators for the latter. The dashed line corresponds to the true value of $\beta$. 
+
+```{r 'figure-B', echo = FALSE, fig.align='center'}
+# Make a plot for B
+results %>%
+  group_by(estimatorBS, TrueTau2) %>%
+  summarise(AvgEstB = mean(B),
+            TrueB = mean(TrueB),
+            AvgEstTau2 = mean(tau2)) %>%
+  group_by(estimatorBS, TrueTau2) %>%
+  ggplot(aes(x = estimatorBS, y = AvgEstB)) + 
+  geom_bar(stat = 'identity',
+                 position = 'dodge2',
+                 aes(fill = factor(TrueTau2))) +
+  geom_hline(aes(yintercept = Tes), colour = 'black', linetype = 'dashed') +
+  labs(caption = paste0('Averaged over ', nsim, ' simulations. Dashed line = true value.')) +
+  scale_fill_brewer('True between-study variance', type = 'qual', palette = 5) +
+  scale_y_continuous('Average estimate of B') +
+  scale_x_discrete('Estimator of between-study variability') +
+  theme_bw() +
+  theme(panel.grid.major = element_line(size = 0.8),
+        panel.grid.minor = element_line(size = 0.8),
+        panel.spacing = unit(1, "lines"),
+        axis.title.x = element_text(face = 'plain'),
+        axis.title.y = element_text(face = 'plain'),
+        axis.text = element_text(size = 9, face = 'bold'),
+        axis.ticks = element_line(size = 0.9),
+        axis.ticks.length=unit(.20, "cm"),
+        axis.line = element_line(size = .75),
+        title = element_text(face = 'plain'),
+        plot.title = element_text(hjust = 0.5),
+        strip.text = element_text(face = 'bold', size = 12),
+        legend.position = 'bottom',
+        legend.text = element_text(face = 'bold'))
+```
+
+It seems to be off?
+```{r 'results-B-table'}
+results %>%
+  group_by(estimatorBS, TrueTau2) %>%
+  summarise(AvgEstB = mean(B),
+            TrueB = mean(TrueB))
+```
+
+### Estimator for between-study variance
+
+We repeat the same for the estimates of between-study variability.
+
+```{r 'figure-SigmB', echo = FALSE, fig.align='center'}
+results %>%
+  dplyr::select(-B,-TrueB) %>%
+  group_by(TrueTau2, estimatorBS) %>%
+  summarise(AvgEstTau2 = mean(tau2)) %>%
+  gather(value = 'value', key = 'type', -2) %>%
+  mutate(type_rename = ifelse(type == 'TrueTau2', ' True value',
+                              'Estimated value')) %>%
+  mutate(type_factor = factor(type_rename)) %>%
+  mutate(TrueValue = rep(rep(sigm2U, each = 3), 2)) %>%
+  group_by(estimatorBS, type_factor) %>%
+  ggplot(aes(x = factor(TrueValue), y = value)) + 
+  geom_bar(stat = 'identity',
+           width = .9,
+           position = 'dodge',
+           aes(fill = type_factor)) +
+  facet_wrap(~estimatorBS) + 
+  labs(caption = paste0('Averaged over ', nsim, ' simulations.')) +
+  scale_fill_brewer('True between-study variance', type = 'qual', palette = 3) +
+  scale_y_continuous('Average estimate of between-study variability') +
+  scale_x_discrete('Amount of between-study variability') +
+  theme_bw() +
+  theme(panel.grid.major = element_line(size = 0.8),
+        panel.grid.minor = element_line(size = 0.8),
+        panel.spacing = unit(1, "lines"),
+        axis.title.x = element_text(face = 'plain'),
+        axis.title.y = element_text(face = 'plain'),
+        axis.text = element_text(size = 9, face = 'bold'),
+        axis.ticks = element_line(size = 0.9),
+        axis.ticks.length=unit(.20, "cm"),
+        axis.line = element_line(size = .75),
+        title = element_text(face = 'plain'),
+        plot.title = element_text(hjust = 0.5),
+        strip.text = element_text(face = 'bold', size = 9),
+        legend.position = 'bottom',
+        legend.text = element_text(face = 'plain'))
+```
+
+In a table, we have:
+```{r 'results-table-SigmB'}
+results %>%
+  dplyr::select(-B,-TrueB) %>%
+  group_by(TrueTau2, estimatorBS) %>%
+  summarise(AvgEstTau2 = mean(tau2))
+```
+
+
