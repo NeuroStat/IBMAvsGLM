@@ -1,11 +1,16 @@
+# Folders
+
+* BSVar --> estimation of between-study variability in a real fMRI meta-analysis
+* TrueValues_3levels --> various investigations of the true value parameters in a three level mixed model
+* Variance_2levels --> true level parameter of variance components in a 2 level linear mixed model
+* Variance_3levels --> true level parameter of variance components in a 3 level linear mixed model
+
 # Overview
-* Simulations on an 8 by 8 grid of voxels: activation data + white noise + between-study variability.
+
 * 29 subjects per study.
 * vector of [5 10 15 20 25 30 35 40 45 50] studies per MA.
-* 500 simulations (so far)
 * Run on the HPC infrastructure
 
-Analyzed using [?]() script.
 
 # Between-study variability
 The folder _BSVar_ contains an assessment of empirical between-study variability in the fMRI literature.

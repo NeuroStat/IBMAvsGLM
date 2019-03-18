@@ -5,8 +5,8 @@
 #PBS -o output/output.file
 #PBS -e error/error.file
 #PBS -m a
-#PBS -l walltime=07:00:00
-#PBS -l vmem=30GB
+#PBS -l walltime=04:00:00
+#PBS -l vmem=20GB
 #
 
 

@@ -7,7 +7,8 @@
 #### Notes:
 #################
 
-
+# Created new R file for the MAvsGLM.R analysis.
+# However, this file is based on same PreProcessGLMvsIBMA_Act.R file (just to confuse me).
 
 ##
 ###############
@@ -45,7 +46,6 @@ library(gridExtra)
 library(oro.nifti)
 library(reshape2)
 library(RColorBrewer)
-library(Hmisc)
 library(devtools)
 library(neuRosim)
 library(scatterplot3d)
@@ -70,17 +70,22 @@ DATAwd <- list(
   'Take[MAvsIBMA_Act]' = 
     "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results",
   'Take[MAvsIBMA_Act_RanInSl]' = 
-    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/Results"
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/Results",
+  'Take[GLMvsMA_wi_w_act]' = 
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results"
 )
 NUMDATAwd <- length(DATAwd)
-currentWD <- 2
+currentWD <- 3
 
 # If available, load in Intermediate Results: this is location where summarized results are written
 LIR <- list(
   'Take[MAvsIBMA_Act]' = 
     '/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/ProcessedResults',
   'Take[MAvsIBMA_Act_RanInSl]' = 
-    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/ProcessedResults"
+    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/ProcessedResults",
+  'Take[GLMvsMA_wi_w_act]' = 
+    "~/Desktop/IBMA_tmp"
+    #"/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results/ProcessedResults"
 )
 
 # Number of conficence intervals
@@ -88,9 +93,9 @@ CIs <- c('MA-weightVar','GLM-t')
 NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
-info <- data.frame('Sim' = c(1),
-                   'nsim' = c(500),
-                   'nsub' = trueMCvalues('sim_act', 'nsub'))
+info <- data.frame('Sim' = c(1,2,3),
+                   'nsim' = c(500, 500,1000),
+                   'nsub' = rep(trueMCvalues('sim_act', 'nsub'),3))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
 
@@ -246,7 +251,7 @@ if(!RAWDATA){
     # Drop wSIMSDCov (not interested in)
     dplyr::select(-wSimSDCov) %>%
     # Summarise over simulations
-    group_by(parameter, TrueD, eta, nstud) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
     summarise(coverage = mean(wSimCoverage),
               sdCoverage = sd(wSimCoverage))
 
@@ -254,37 +259,37 @@ if(!RAWDATA){
   COVdata <- readRDS(file = 
                 paste(LIR[[currentWD]], '/coverage_all.rda', sep = ''))
   # Summarise over simulations first
-  COV <- COVdata %>% group_by(voxel, parameter, TrueD, eta, nstud) %>%
+  COV <- COVdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
     summarise(AvgSimCov = mean(cov_IND)) %>%
-    group_by(parameter, TrueD, eta, nstud) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
     summarise(AvgCOV = mean(AvgSimCov))
   
   ### COVERAGE NOT AVERAGED OVER ALL VOXELS ###
   COV_SIM <- COVdata %>% 
     # Average over all simulations
-    group_by(voxel, parameter, TrueD, eta, nstud) %>%
+    group_by(voxel, parameter, TrueD, tau, nstud) %>%
     summarise(AvgCOV_sim = mean(cov_IND))
 
   # Values for CI length
   CILdata <- readRDS(file = 
               paste(LIR[[currentWD]], '/CIlength_all.rda', sep = ''))
   # Summarise over simulations
-  CIL <- CILdata %>% group_by(voxel, parameter, TrueD, eta, nstud) %>%
+  CIL <- CILdata %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
     summarise(AvgSimCIL = mean(CIlength)) %>%
     # now summarise over voxels
-    group_by(parameter, TrueD, eta, nstud) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
     summarise(AvgCIL = mean(AvgSimCIL))
   
   # Values for standardized bias
   BiasData <- readRDS(file = 
       paste(LIR[[currentWD]], '/bias_all.rda', sep = ''))
   # Summarise over simulations
-  BIAS <- BiasData %>% group_by(voxel, parameter, TrueD, eta, nstud) %>%
+  BIAS <- BiasData %>% group_by(voxel, parameter, TrueD, tau, nstud) %>%
     summarise(AvgBias = mean(bias),
            SDBias = sd(bias)) %>%
     mutate(StBias = AvgBias/SDBias * 100) %>%
     # Summarise over voxels
-    group_by(parameter, TrueD, eta, nstud) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
     summarise(AvgStBias = mean(StBias))
   
   # Values for estimated variance
@@ -292,11 +297,11 @@ if(!RAWDATA){
             paste(LIR[[currentWD]], '/EstVar_all.rda', sep = ''))
   # Summarise over simulations
   EstVar <- EstVarData %>% 
-    group_by(voxel, parameter, TrueD, eta, nstud) %>%
+    group_by(voxel, parameter, TrueD, tau, nstud) %>%
     summarise(AvgSimEstVar = mean(EstVar)) %>%
     ungroup() %>%
     # And then over voxels
-    group_by(parameter, TrueD, eta, nstud) %>%
+    group_by(parameter, TrueD, tau, nstud) %>%
     summarise(AvgEstVar = mean(AvgSimEstVar))
   
 }
@@ -315,7 +320,7 @@ CoveragePlot %>%
   left_join(., dplyr::select(TrueP_S, TrueD, TrueSigma), by = 'TrueD') %>% 
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         etaL = paste('sigma[b1]^2 ~ "=" ~ ', round(eta**2, 2), sep = ''),
+         etaL = paste('sigma[b1]^2 ~ "=" ~ ', round(tau**2, 2), sep = ''),
          sigmaL = paste('sigma[W] ~ "=" ~ ', round(TrueSigma, 0), sep = '')) %>%
   mutate(sigmaLF = factor(sigmaL, levels = 
     paste('sigma[W] ~ "=" ~ ', 
@@ -486,6 +491,9 @@ CIL %>%
 BIAS %>%
   # For IBC, I switch from d to sigma again...
   left_join(., dplyr::select(TrueP_S, TrueD, TrueSigma), by = 'TrueD') %>% 
+  # For OHBM, I convert tau to eta
+  mutate(eta = ifelse(tau == 0, 0,
+                      ifelse(tau == 10, 0.1, 0.4))) %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
          etaL = paste('sigma[b1]^2 ~ "=" ~ ', round(eta**2, 2), sep = ''),
@@ -493,9 +501,9 @@ BIAS %>%
   mutate(sigmaLF = factor(sigmaL, levels = 
                   paste('sigma[W] ~ "=" ~ ', 
         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>% 
-  # remove wrong results of MA
-  mutate(AvgStBias = ifelse(parameter == 'MA.WeightedAvg' & TrueD != 0.14,
-                            NA, AvgStBias)) %>%
+  # # remove wrong results of MA
+  # mutate(AvgStBias = ifelse(parameter == 'MA.WeightedAvg' & TrueD != 0.14,
+  #                           NA, AvgStBias)) %>%
   # 4) plot the results
   ggplot(., aes(x = nstud, y = AvgStBias)) + 
   geom_point(aes(colour = parameter, fill = parameter), size = 0.8) +

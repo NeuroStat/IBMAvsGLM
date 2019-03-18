@@ -47,6 +47,17 @@ library(neuRosim)
 # Number of batches run
 nbatch <- 100
 
+# Fixed parameters: 
+# beta0 = base
+# beta1 = 3% BOLD signal change (if base signal = 100)
+beta0 <- 100
+beta1 <- 3
+
+# Random effects parameters: variance components
+sigma_e <- 4
+sigmab0 <- 0
+sigmab1 <- 2
+
 # Location of data
 locDat <- '/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit/1_Scripts/CI_IBMAvsGLM/Simulations/Activation/Variance_2levels/mixed_effects_glm_fMRI/Results'
 

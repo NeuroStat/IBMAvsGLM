@@ -6,9 +6,12 @@
 #PBS -e error/error.file
 #PBS -m a
 #PBS -l walltime=07:00:00
-#PBS -l vmem=30GB
 #
 
+#----------------------------------------------------#
+# SWAP CLUSTERS
+module swap cluster/delcatty
+#----------------------------------------------------#
 
 #----------------------------------------------------#
 # MODULES TO LOAD IN

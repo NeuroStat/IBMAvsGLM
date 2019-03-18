@@ -533,4 +533,11 @@ solve(t(matrix(rep(1, nsub), ncol = 1)) %*% matrix(rep(1, nsub), ncol = 1))
 ```
 
 
+# Meta-analysis of BOLD responses
 
+Let us now generate data in three stages. We will use the two-stage approach only.
+The effect size is now defined at the meta-analysis level. We thus have within- and between-subject variability with between-study variability.
+
+
+
+## Two-stage approach
