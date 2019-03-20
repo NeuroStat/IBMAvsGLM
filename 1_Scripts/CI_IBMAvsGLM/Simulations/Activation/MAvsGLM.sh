@@ -5,7 +5,7 @@
 #PBS -o output/output.file
 #PBS -e error/error.file
 #PBS -m a
-#PBS -l walltime=11:00:00
+#PBS -l walltime=04:30:00
 #
 
 #----------------------------------------------------#
@@ -32,23 +32,24 @@ cd $srcdir
 #----------------------------------------------------#
 
 #----------------------------------------------------#
-# NUMBER OF SCENARIOS
-NSCEN=1
+# CHOOSE YOUR SCENARIO: ESTIMATOR FOR BETWEEN-STUDY
+  # HETEROGENEITY IN CASE OF STNADARDIZED EFFECT SIZES
+  # OPTIONS: DL or HE
+SCEN="HE"
 #----------------------------------------------------#
 
 #----------------------------------------------------#
 # CREATE THE FOLDERS IN RESULTS
 cd Results
+mkdir $SCEN
+cd $SCEN
+# This folder is used to write intermediate files!
 mkdir ${PBS_ARRAYID}
-  cd ${PBS_ARRAYID}
-  mkdir $(printf "SCEN_%1i " $(seq 1 $NSCEN))
 cd $srcdir
 #----------------------------------------------------#
 
 
 #----------------------------------------------------#
-for i in $(eval echo "{1..$NSCEN}"); do
-  # GO TIME: FOR LOOP OVER ALL SCENARIOS:
-  Rscript MAvsGLM.R ${PBS_ARRAYID} "$i" "HPC" "$srcdir/Results/${PBS_ARRAYID}/SCEN_$i"
-done
+# GO TIME: RUN THIS SCENARIO
+Rscript MAvsGLM.R ${PBS_ARRAYID} "$SCEN" "HPC" "$srcdir/Results/$SCEN/${PBS_ARRAYID}"
 #----------------------------------------------------#

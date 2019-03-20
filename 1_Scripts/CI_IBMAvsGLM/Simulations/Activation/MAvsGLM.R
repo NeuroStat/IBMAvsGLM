@@ -44,15 +44,15 @@ t1 <- Sys.time()
 input <- commandArgs(TRUE)
 # K'th simulation
 K <- try(as.numeric(as.character(input)[1]),silent=TRUE)
-# Which scenario
-SCEN <- try(as.numeric(as.character(input)[2]),silent=TRUE)
+# Which scenario: estimate between-study heterogeneity using DL or HE?
+SCEN <- try(as.character(input)[2],silent=TRUE)
 # Which machine
 MACHINE <- try(as.character(input)[3],silent=TRUE)
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
   K <- 1
-  SCEN <- 1
+  SCEN <- 'DL'
 }
 # DataWrite directory: where all temp FSL files are written to
 DataWrite <- try(as.character(input)[4],silent=TRUE)
@@ -88,6 +88,7 @@ library(oro.nifti)
 library(dplyr)
 library(tibble)
 library(neuRosim)
+library(metafor)
 library(NeuRRoStat)
 library(fMRIGI)
 
@@ -103,6 +104,7 @@ MAvsIBMAres <- tibble(sim = integer(),
                       voxel = integer(),
                       value = numeric(),
                       parameter = saveParam,
+                      est_tau2 = factor(levels = c('DL', 'HE')),
                       BOLDC = numeric(),
                       sigmaW = numeric(),
                       sigmaM = numeric(),
@@ -123,18 +125,39 @@ generateTimeSeries <- function(nscan, BETA, int, X, sigma2W){
 }
 
 # Function to gather results into tibbles
-GetTibble <-function(data, nameParam, sim, DIM, BOLDC_p, sigmaW, sigmaM, nstud, tdof_t1){
+GetTibble <-function(data, nameParam, est_tau2, sim, DIM, BOLDC_p, sigmaW, sigmaM, nstud, tdof_t1){
   gather_data <- data.frame('sim' = as.integer(sim),
                             'voxel' = as.vector(1:prod(DIM)),
                             'value' = matrix(data, ncol = 1),
                             'parameter' = factor(nameParam,
                                           levels = levels(saveParam)),
+                            'est_tau2' = factor(est_tau2,
+                                          levels = c('DL', 'HE')),
                             'BOLDC' = BOLDC_p,
                             'sigmaW' = sigmaW,
                             'sigmaM' = sigmaM,
                             'nstud' = nstud,
                             'FLAMEdf_3' = tdof_t1)
   return(as.tibble(gather_data))
+}
+
+# Function to get HE estimate out of the metafor package
+getHE <- function(Y, W){
+  # Note that we will use mapply, thus the input for THIS function is a vector
+  # that comes from a list. Therefore, no lists are used in this function.
+          # Check if Y and W are lists
+        #  if(class(Y) != "list") stop('Y has to be of class list!')
+        #  if(class(W) != "list") stop('W has to be of class list!')
+  
+  # Now switch again from weights to within-study variance
+        #lapply(W, function(x){1/x})
+  wVar <- 1/W
+  
+  # Fit the linear model with HE as estimator
+  HEest <- metafor::rma(yi = Y, vi = wVar, method = "HE")$tau2
+  
+  # Return the estimate
+  return(HEest)
 }
 
 ##
@@ -186,7 +209,6 @@ TrueSigma2M_vec <- trueMCvalues('sim_act', 'TrueSigma2M')
 
 # Number of studies in the MA.
 nstud_vec <- trueMCvalues('sim_act', 'nstud')
-
 
 # Data frame with combinations
 ParamComb <- expand.grid('BOLDC' = BOLDC,
@@ -395,14 +417,27 @@ for(p in 1:NumPar){
   #### META-ANALYSIS: classical approach
   ####************####
   
-  # Estimate between-study heterogeneity: DL estimator
-  # Need to make lists of Hedge g and the weights for using mapply
-  # Reason is that I combine matrices and per row I need Hedge g and weights
-  # in a function.
+  # First I need to make lists of Hedge g and its weights for using it in mapply
   STWEIGHTSL <- as.list(as.data.frame(t(STWEIGHTS)))
   STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
-  ESTTAU <- array(as.vector(mapply(NeuRRoStat::tau, Y = STHEDGEL,
-                                   W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
+  
+  # Estimate the between-study heterogeneity
+  # First up: DL estimator
+  if(SCEN == 'DL'){
+    # Reason is that I combine matrices and per row I need Hedge g and weights
+    # in a function.
+    ESTTAU <- array(as.vector(mapply(NeuRRoStat::tau, Y = STHEDGEL,
+                                     W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
+  }
+  if(SCEN == 'HE'){
+    # Estimate tau2 in each voxel, using the individual studies
+    ESTTAU <- array(as.vector(mapply(getHE, Y = STHEDGEL, W = STWEIGHTSL)), 
+                    dim = prod(DIM))
+      # If you want to check:    
+      #  teY <- STHEDGEL[[728]]
+      #  teW <- 1/STWEIGHTSL[[728]]
+      #  metafor::rma(yi = teY, vi = teW, method = "HE")$tau2
+  }
   
   # Random effect weights: inverse of sum of within- and between-study variability
   STWEIGHTS_ran <- 1/((1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud)))
@@ -510,7 +545,8 @@ for(p in 1:NumPar){
   for(j in 1:length(levels(saveParam))){
     tmpObject <- get(levels(saveParam)[j])
     nameObject <- levels(saveParam)[j]
-    MAvsIBMAres <- GetTibble(data = tmpObject, nameParam = nameObject, sim = K,
+    MAvsIBMAres <- GetTibble(data = tmpObject, nameParam = nameObject, 
+                             est_tau2 = SCEN, sim = K,
                       DIM = DIM, BOLDC_p = BOLDC_p,
                       sigmaW = sqrt(sigma2W), sigmaM = sqrt(sigma2M),
                       nstud = nstud,tdof_t1 =  tdof_t1) %>%
@@ -524,7 +560,7 @@ for(p in 1:NumPar){
 ### Save object
 ###############
 ##
-saveRDS(MAvsIBMAres, file = paste(wd,'/Results/ActMAvsIBMA_',K,'.rda', sep=''),
+saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/ActMAvsIBMA_',K,'.rda', sep=''),
         compress = TRUE)
 
 # Print time
