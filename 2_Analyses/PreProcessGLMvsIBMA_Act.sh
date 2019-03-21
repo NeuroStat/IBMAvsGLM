@@ -29,7 +29,7 @@ cd $srcdir
 
 #----------------------------------------------------#
 # GO TIME: RUN THAT THING
-Rscript PreProcessGLMvsIBMA_Act.R "HPC" "$srcdir/Results"
+Rscript PreProcessGLMvsIBMA_Act.R "HPC" "$srcdir/Results/HE"
 #----------------------------------------------------#
 
 

@@ -49,7 +49,8 @@ if(MACHINE=='HPC'){
   DATAwd <- list(
   'Take[MAvsIBMA_Act]' = try(as.character(input)[2],silent=TRUE),
   'Take[MAvsIBMA_Act_RanInSl]' = try(as.character(input)[2],silent=TRUE),
-  'Take[GLMvsMA_wi_w_act]' = try(as.character(input)[2],silent=TRUE))
+  'Take[GLMvsMA_wi_w_act]' = try(as.character(input)[2],silent=TRUE),
+  'Take[HE]' = try(as.character(input)[2],silent=TRUE))
 }
 if(MACHINE=='MAC'){
   DATAwd <- list(
@@ -57,14 +58,13 @@ if(MACHINE=='MAC'){
       "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results",
     'Take[MAvsIBMA_Act_RanInSl]' = 
       "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/Results",
-    'Take[GLMvsMA_wi_w_act]' = 
-      "~/Desktop/IBMA_res_10"
-      #"/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results"
+    'Take[GLMvsMA_wi_w_act]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results",
+    'Take[HE]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/HE/Results"
   )
 }
 NUMDATAwd <- length(DATAwd)
 # Select your simulation setting here
-currentWD <- 3
+currentWD <- 4
 
 # Write Intermediate Results: this is location where summarized results are written
 if(MACHINE=='HPC'){
@@ -77,7 +77,8 @@ if(MACHINE=='MAC'){
     'Take[MAvsIBMA_Act_RanInSl]' = 
       "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/ProcessedResults",
     'Take[GLMvsMA_wi_w_act]' = 
-      "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results/ProcessedResults"
+      "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results/ProcessedResults",
+    'Take[HE]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/HE/Results/ProcessedResults"
   )[[currentWD]]
 }
 
@@ -128,9 +129,10 @@ CIs <- c('MA-weightVar','GLM-t')
 NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
-info <- data.frame('Sim' = c(1, 2, 3),
-                   'nsim' = c(1000, 500, 1000),
+info <- data.frame('Sim' = c(1, 2, 3, 4),
+                   'nsim' = c(1000, 500, 1000, 1000),
                    'nsub' = c(trueMCvalues('sim_act', 'nsub'),
+                            trueMCvalues('sim_act', 'nsub'),
                             trueMCvalues('sim_act', 'nsub'),
                             trueMCvalues('sim_act', 'nsub')))
 nsim <- info[currentWD,'nsim']
@@ -150,7 +152,7 @@ ParamsSim <- c('CI.MA.upper.weightVar', 'CI.MA.lower.weightVar',
 if(currentWD %in% c(1,2)){
   saveParam <- factor(levels = ParamsSim[1:11])
 }
-if(currentWD == 3){
+if(currentWD %in% c(3,4)){
   saveParam <- factor(levels = ParamsSim[1:12])
 }
 
@@ -159,6 +161,7 @@ MAvsIBMAres <- tibble(sim = integer(),
                       voxel = integer(),
                       value = numeric(),
                       parameter = saveParam,
+                      est_tau2 = factor(levels = c('DL', 'HE')),
                       BOLDC = numeric(),
                       sigmaW = numeric(),
                       sigmaM = numeric(),
@@ -168,6 +171,7 @@ MAvsIBMAres <- tibble(sim = integer(),
 # Data frame with coverage results, averaged over all voxels:
 coverage_Vox <- tibble(sim = integer(),
                       parameter = saveParam,
+                      est_tau2 = factor(levels = c('DL', 'HE')),
                       TrueD = numeric(),
                       sigmaW = numeric(),
                       sigmaM = numeric(),
@@ -179,6 +183,7 @@ coverage_Vox <- tibble(sim = integer(),
 coverage_all <- tibble(sim = integer(),
                        voxel = integer(),
                        parameter = saveParam,
+                       est_tau2 = factor(levels = c('DL', 'HE')),
                        TrueD = numeric(),
                        sigmaW = numeric(),
                        sigmaM = numeric(),
@@ -188,16 +193,18 @@ coverage_all <- tibble(sim = integer(),
 # Data frame to calculate bias for each voxel
 bias_all <- tibble(sim = integer(),
                    voxel = integer(),
-                    parameter = saveParam,
-                    TrueD = numeric(),
-                    sigmaW = numeric(),
-                    sigmaM = numeric(),
-                    nstud = numeric(),
-                    bias = numeric())
+                   parameter = saveParam,
+                   est_tau2 = factor(levels = c('DL', 'HE')),
+                   TrueD = numeric(),
+                   sigmaW = numeric(),
+                   sigmaM = numeric(),
+                   nstud = numeric(),
+                   bias = numeric())
 
 # Averaged over all voxels
 bias_Vox <- tibble(sim = integer(),
                    parameter = saveParam,
+                   est_tau2 = factor(levels = c('DL', 'HE')),
                    TrueD = numeric(),
                    sigmaW = numeric(),
                    sigmaM = numeric(),
@@ -208,6 +215,7 @@ bias_Vox <- tibble(sim = integer(),
 CIlength_all <- tibble(sim = integer(),
                    voxel = integer(),
                    parameter = saveParam,
+                   est_tau2 = factor(levels = c('DL', 'HE')),
                    TrueD = numeric(),
                    sigmaW = numeric(),
                    sigmaM = numeric(),
@@ -217,6 +225,7 @@ CIlength_all <- tibble(sim = integer(),
 # Average CI length over all voxels
 CIlength_Vox <- tibble(sim = integer(),
                        parameter = saveParam,
+                       est_tau2 = factor(levels = c('DL', 'HE')),
                        TrueD = numeric(),
                        sigmaW = numeric(),
                        sigmaM = numeric(),
@@ -228,6 +237,7 @@ CIlength_Vox <- tibble(sim = integer(),
 EstVar_all <- tibble(sim = integer(),
                      voxel = integer(),
                      parameter = saveParam,
+                     est_tau2 = factor(levels = c('DL', 'HE')),
                      TrueD = numeric(),
                      sigmaW = numeric(),
                      sigmaM = numeric(),
@@ -237,6 +247,7 @@ EstVar_all <- tibble(sim = integer(),
 # Data frame with average estimated square root of between-study variance over all voxels
 EstVar_Vox <- tibble(sim = integer(),
                      parameter = saveParam,
+                     est_tau2 = factor(levels = c('DL', 'HE')),
                      TrueD = numeric(),
                      sigmaW = numeric(),
                      sigmaM = numeric(),
@@ -282,7 +293,7 @@ TrueParamDat <- data.frame(Nsub = trueMCvalues('sim_act', 'nsub'),
                            BOLDC = trueMCvalues('sim_act', 'BOLDC')[2])
 
 # If preprocessing the take with null data, add extra part to TrueParamDat
-if(currentWD == 3){
+if(currentWD %in% c(3,4)){
   TrueParamDat %<>% bind_rows(
     data.frame(Nsub = trueMCvalues('sim_act', 'nsub'),
                TrueD = trueMCvalues('sim_act', 'TrueD'),
@@ -317,7 +328,6 @@ TrueP_S <- TrueParamDat %>%
 ### Data Wrangling
 ###############
 ##
-
 
 # Load in all the data and summarise 
 for(i in 1:nsim){
@@ -355,7 +365,7 @@ for(i in 1:nsim){
     full_join(
       filter(Estimate, parameter == 'MA.WeightedAvg') %>% 
         dplyr::select(-FLAMEdf_3),
-      ., by = c("sim", "voxel", "sigmaW", "sigmaM", "nstud", "BOLDC"))
+      ., by = c("sim", "voxel", "est_tau2", "sigmaW", "sigmaM", "nstud", "BOLDC"))
   
   # Repeat with GLM approach
   GLMwide <- MAvsIBMAres %>%
@@ -371,7 +381,7 @@ for(i in 1:nsim){
     full_join(
       filter(Estimate, parameter == 'IBMA.COPE') %>% 
         dplyr::select(-FLAMEdf_3),
-      ., by = c("sim", "voxel", "sigmaW", "sigmaM", "nstud", "BOLDC"))
+      ., by = c("sim", "voxel", "est_tau2", "sigmaW", "sigmaM", "nstud", "BOLDC"))
   
   # Bind data frames
   ProcessedDat <- bind_rows(MAwide, GLMwide)
@@ -385,8 +395,8 @@ for(i in 1:nsim){
                             ifelse(TrueCOPE >= CI_lower & TrueCOPE <= CI_upper,1, 0))) %>%
     # Drop variables that we do not need to calculate coverages
       # sigmaW is not dropped anymore as we cross with 0 value TrueD
-    dplyr::select(voxel, parameter, TrueD, sigmaW, sigmaM, nstud, cov_IND) %>%
-    group_by(parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    dplyr::select(voxel, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud, cov_IND) %>%
+    group_by(parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(coverage = mean(cov_IND),
               sdCov = sd(cov_IND)) %>% 
     # Add ID of simulation
@@ -405,15 +415,14 @@ for(i in 1:nsim){
               ifelse(TrueCOPE >= CI_lower & TrueCOPE <= CI_upper,1, 0))) %>%
     # Drop variables that we do not need to calculate coverages
     # sigmaW is not dropped anymore as we cross with 0 value TrueD
-    dplyr::select(voxel, parameter, TrueD, sigmaW, sigmaM, nstud, cov_IND) %>%
+    dplyr::select(voxel, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud, cov_IND) %>%
     # Filter out studies
     filter(nstud %in% filtStud) %>%
     # Maybe this won't work either...
     # Add ID of simulation
     mutate(sim = i) %>%
     bind_rows(coverage_all,.)
-  
-  
+
   # If we want for each voxel, we will need to run a separate script
   # Where we average over the simulations in batches.
   # Objects get too large
@@ -444,9 +453,9 @@ for(i in 1:nsim){
   CIlength_Vox <- ProcessedDat %>%
     mutate(CIlength = CI_upper - CI_lower) %>%
     # Select parameters
-    dplyr::select(sim, voxel, parameter, TrueD, sigmaW, sigmaM, nstud, CIlength) %>%
+    dplyr::select(sim, voxel, est_tau2, parameter, TrueD, sigmaW, sigmaM, nstud, CIlength) %>%
     # Summarise over voxels
-    group_by(sim, parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    group_by(sim, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(AvCIlength = mean(CIlength)) %>%
     ungroup() %>%
     # Bind tot data frame
@@ -467,9 +476,9 @@ for(i in 1:nsim){
                          (value - TrueG),
                          (value - TrueCOPE))) %>%
     # Select the parameters
-    dplyr::select(sim, voxel, parameter, TrueD, sigmaW, sigmaM, nstud, bias) %>%
+    dplyr::select(sim, voxel, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud, bias) %>%
     # Summarise over voxels
-    group_by(sim, parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    group_by(sim, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(Avbias = mean(bias)) %>%
     ungroup() %>%
     # Bind to data frame
@@ -482,7 +491,7 @@ for(i in 1:nsim){
                          (value - TrueG),
                          (value - TrueCOPE))) %>%
     # Select the parameters
-    dplyr::select(sim, voxel, parameter, TrueD, sigmaW, sigmaM, nstud, bias) %>%
+    dplyr::select(sim, voxel, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud, bias) %>%
     # Filter studies
     filter(nstud %in% filtStud) %>%
     # Bind to data frame
@@ -505,7 +514,7 @@ for(i in 1:nsim){
     # Square root of tau as this is actually tau^2
     mutate(value = ifelse(parameter == 'ESTTAU', sqrt(value), value)) %>%
     # Summarise over voxels
-    group_by(sim, parameter, BOLDC, sigmaW, sigmaM, nstud) %>%
+    group_by(sim, parameter, est_tau2, BOLDC, sigmaW, sigmaM, nstud) %>%
     summarise(AvgEstSE = mean(value)) %>%
     # Ungroup
     ungroup() %>%
