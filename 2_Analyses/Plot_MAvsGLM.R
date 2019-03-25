@@ -110,8 +110,8 @@ DATAwd <- list(
     "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_Parameters/Results",
   'Take[MAvsIBMA_Act_RanInSl]' = 
     "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/Results",
-  'Take[GLMvsMA_wi_w_act]' = 
-    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results"
+  'Take[GLMvsMA_wi_w_act]' = '~/Desktop/IBMA2'
+    #"/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/Results"
 )
 NUMDATAwd <- length(DATAwd)
 currentWD <- 3
@@ -124,7 +124,7 @@ LIR <- list(
   'Take[MAvsIBMA_Act_RanInSl]' = 
     "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/MAvsIBMA_act/Results_RanInSl/ProcessedResults",
   'Take[GLMvsMA_wi_w_act]' = 
-    "~/Desktop/IBMA_tmp"
+    "~/Desktop/IBMA2"
   #"/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/ProcessedResults"
 )
 
@@ -303,28 +303,28 @@ if(!RAWDATA){
     # Drop wSIMSDCov (not interested in)
     dplyr::select(-wSimSDCov) %>%
     # Summarise over simulations
-    group_by(parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    group_by(parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(coverage = mean(wSimCoverage),
               sdCoverage = sd(wSimCoverage))
   
   ### COVERAGE AVERAGED OVER ALL SIMULATIONS ###
   CoverageViolinPlot <- readRDS(file = 
     paste(LIR[[currentWD]], '/coverage_all.rda', sep = '')) %>%
-    group_by(voxel, parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    group_by(voxel, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(coverage = mean(cov_IND))
   
   ### CI LENGHTS AVERAGED OVER ALL VOXELS ###
   CILdata <- readRDS(file = 
     paste(LIR[[currentWD]], '/CIlength_Vox.rda', sep = ''))
   # Summarise over simulations
-  CIL <- CILdata %>% group_by(parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+  CIL <- CILdata %>% group_by(parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(AvgSimCIL = mean(AvCIlength))
   
   ### STANDARDIZED BIAS AVERAGED OVER ALL VOXELS ###
   BiasData <- readRDS(file = 
     paste(LIR[[currentWD]], '/bias_Vox.rda', sep = ''))
   # Summarise over simulations
-  BIAS <- BiasData %>% group_by(parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+  BIAS <- BiasData %>% group_by(parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(AvgBias = mean(Avbias),
               SDBias = sd(Avbias)) %>%
     mutate(StBias = AvgBias/SDBias * 100)
@@ -335,7 +335,7 @@ if(!RAWDATA){
       paste(LIR[[currentWD]], '/bias_all.rda', sep = ''))
   # Summarise over simulations
   BIASviolin <- BiasData_all %>% 
-    group_by(voxel, parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    group_by(voxel, parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(AvgBias = mean(bias),
               SDBias = sd(bias)) %>%
     mutate(StBias = AvgBias/SDBias * 100)
@@ -345,7 +345,7 @@ if(!RAWDATA){
     paste(LIR[[currentWD]], '/EstVar_Vox.rda', sep = ''))
   # Summarise over simulations
   EstVar <- EstVarData %>% 
-    group_by(parameter, TrueD, sigmaW, sigmaM, nstud) %>%
+    group_by(parameter, est_tau2, TrueD, sigmaW, sigmaM, nstud) %>%
     summarise(AvgSE = mean(AvgEstSE)) 
 }
 
@@ -368,7 +368,7 @@ CoveragePlot %>%
         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
   mutate(sigmaMLF = factor(sigmaML, levels =
         paste('sigma[M] ~ "=" ~ ',
-        round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
+        round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>% 
   # 4) plot the results
   ggplot(., aes(x = nstud, y = coverage)) +
   geom_line(aes(colour = parameter, linetype = signalF), size = 0.95) +
