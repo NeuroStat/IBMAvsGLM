@@ -58,8 +58,8 @@ if(is.na(MACHINE)){
 DataWrite <- try(as.character(input)[4],silent=TRUE)
 
 # Check if SCEN contains one of the values that we need
-if(!SCEN %in% c('GLM', 'DL', 'HE')){
-  error('SCEN should be one of the following: GLM, DL or HE')
+if(!SCEN %in% c('GLM', 'DL', 'HE', 'REML')){
+  stop('SCEN should be one of the following: GLM, DL, HE or REML')
 }
 
 # Set starting seed: it is the product of the amount of voxels
