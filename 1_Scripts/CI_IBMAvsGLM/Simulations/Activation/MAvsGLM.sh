@@ -34,7 +34,7 @@ cd $srcdir
 #----------------------------------------------------#
 # CHOOSE YOUR SCENARIO: ESTIMATOR FOR BETWEEN-STUDY
   # HETEROGENEITY IN CASE OF STNADARDIZED EFFECT SIZES
-  # OPTIONS: DL or HE
+  # OPTIONS: GLM, DL, HE or REML
 SCEN="HE"
 #----------------------------------------------------#
 

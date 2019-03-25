@@ -44,22 +44,27 @@ t1 <- Sys.time()
 input <- commandArgs(TRUE)
 # K'th simulation
 K <- try(as.numeric(as.character(input)[1]),silent=TRUE)
-# Which scenario: estimate between-study heterogeneity using DL or HE?
-SCEN <- try(as.character(input)[2],silent=TRUE)
+# Which scenario: GLM, MA using DL, MA using HE or MA using REML?
+SCEN <- try(as.character(input)[2], silent=TRUE)
 # Which machine
 MACHINE <- try(as.character(input)[3],silent=TRUE)
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
   K <- 1
-  SCEN <- 'DL'
+  SCEN <- 'REML'
 }
 # DataWrite directory: where all temp FSL files are written to
 DataWrite <- try(as.character(input)[4],silent=TRUE)
 
-# Set starting seed: it is the product of the amount of voxels,
-# the number of studies and the number of subjects!
-starting.seed <- 36865*K
+# Check if SCEN contains one of the values that we need
+if(!SCEN %in% c('GLM', 'DL', 'HE')){
+  error('SCEN should be one of the following: GLM, DL or HE')
+}
+
+# Set starting seed: it is the product of the amount of voxels
+# and the number of subjects!
+starting.seed <- 21141*K
 set.seed(starting.seed)
 
 # Set WD: this is location where results are written
@@ -104,7 +109,7 @@ MAvsIBMAres <- tibble(sim = integer(),
                       voxel = integer(),
                       value = numeric(),
                       parameter = saveParam,
-                      est_tau2 = factor(levels = c('DL', 'HE')),
+                      SCEN = factor(levels = c('GLM', 'DL', 'HE', 'REML')),
                       BOLDC = numeric(),
                       sigmaW = numeric(),
                       sigmaM = numeric(),
@@ -125,14 +130,14 @@ generateTimeSeries <- function(nscan, BETA, int, X, sigma2W){
 }
 
 # Function to gather results into tibbles
-GetTibble <-function(data, nameParam, est_tau2, sim, DIM, BOLDC_p, sigmaW, sigmaM, nstud, tdof_t1){
+GetTibble <-function(data, nameParam, SCEN, sim, DIM, BOLDC_p, sigmaW, sigmaM, nstud, tdof_t1){
   gather_data <- data.frame('sim' = as.integer(sim),
                             'voxel' = as.vector(1:prod(DIM)),
                             'value' = matrix(data, ncol = 1),
                             'parameter' = factor(nameParam,
                                           levels = levels(saveParam)),
-                            'est_tau2' = factor(est_tau2,
-                                          levels = c('DL', 'HE')),
+                            'SCEN' = factor(SCEN,
+                                          levels = c('GLM', 'DL', 'HE', 'REML')),
                             'BOLDC' = BOLDC_p,
                             'sigmaW' = sigmaW,
                             'sigmaM' = sigmaM,
@@ -141,8 +146,8 @@ GetTibble <-function(data, nameParam, est_tau2, sim, DIM, BOLDC_p, sigmaW, sigma
   return(as.tibble(gather_data))
 }
 
-# Function to get HE estimate out of the metafor package
-getHE <- function(Y, W){
+# Function to get HE or REML estimate out of the metafor package
+getHE_REML <- function(Y, W, method_tau = 'HE'){
   # Note that we will use mapply, thus the input for THIS function is a vector
   # that comes from a list. Therefore, no lists are used in this function.
           # Check if Y and W are lists
@@ -153,11 +158,11 @@ getHE <- function(Y, W){
         #lapply(W, function(x){1/x})
   wVar <- 1/W
   
-  # Fit the linear model with HE as estimator
-  HEest <- metafor::rma(yi = Y, vi = wVar, method = "HE")$tau2
+  # Fit the linear model with HE or REML as estimator
+  HE_REML_est <- metafor::rma(yi = Y, vi = wVar, method = method_tau)$tau2
   
   # Return the estimate
-  return(HEest)
+  return(HE_REML_est)
 }
 
 ##
@@ -251,6 +256,9 @@ XG <- rep(1, nsub)
 ##################
 #### GENERATE DATA
 ##################
+
+# Print scenario
+print(paste('RUNNING SCENARIO: ', SCEN, sep = ''))
 
 # For loop over the data generating parameters
 for(p in 1:NumPar){
@@ -413,123 +421,144 @@ for(p in 1:NumPar){
   ########################################################################################################################################################################
   ########################################################################################################################################################################
   
-  ####************####
-  #### META-ANALYSIS: classical approach
-  ####************####
+  # Now depending on the scenario, we have different parts of the script running
+  if(SCEN %in% c('DL', 'HE', 'REML')){
   
-  # First I need to make lists of Hedge g and its weights for using it in mapply
-  STWEIGHTSL <- as.list(as.data.frame(t(STWEIGHTS)))
-  STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
-  
-  # Estimate the between-study heterogeneity
-  # First up: DL estimator
-  if(SCEN == 'DL'){
-    # Reason is that I combine matrices and per row I need Hedge g and weights
-    # in a function.
-    ESTTAU <- array(as.vector(mapply(NeuRRoStat::tau, Y = STHEDGEL,
-                                     W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
-  }
-  if(SCEN == 'HE'){
-    # Estimate tau2 in each voxel, using the individual studies
-    ESTTAU <- array(as.vector(mapply(getHE, Y = STHEDGEL, W = STWEIGHTSL)), 
-                    dim = prod(DIM))
+    ####************####
+    #### META-ANALYSIS: classical approach
+    ####************####
+    
+    # First I need to make lists of Hedge g and its weights for using it in mapply
+    STWEIGHTSL <- as.list(as.data.frame(t(STWEIGHTS)))
+    STHEDGEL <- as.list(as.data.frame(t(STHEDGE)))
+    
+    # Estimate the between-study heterogeneity
+    # First up: DL estimator
+    if(SCEN == 'DL'){
+      # Reason is that I combine matrices and per row I need Hedge g and weights
+      # in a function.
+      ESTTAU <- array(as.vector(mapply(NeuRRoStat::tau, Y = STHEDGEL,
+                                       W = STWEIGHTSL, k = nstud)), dim = prod(DIM))
+    }
+    if(SCEN == 'HE'){
+      # Estimate tau2 in each voxel, using the individual studies
+      ESTTAU <- array(as.vector(mapply(getHE_REML, Y = STHEDGEL, W = STWEIGHTSL,
+                                       method_tau = 'HE')), 
+                      dim = prod(DIM))
+        # If you want to check:    
+        #  teY <- STHEDGEL[[728]]
+        #  teW <- 1/STWEIGHTSL[[728]]
+        #  metafor::rma(yi = teY, vi = teW, method = "HE")$tau2
+    }
+    if(SCEN == 'REML'){
+      # Estimate tau2 in each voxel, using the individual studies
+      ESTTAU <- array(as.vector(mapply(getHE_REML, Y = STHEDGEL, W = STWEIGHTSL,
+                                       method_tau = 'REML')), 
+                      dim = prod(DIM))
       # If you want to check:    
       #  teY <- STHEDGEL[[728]]
       #  teW <- 1/STWEIGHTSL[[728]]
-      #  metafor::rma(yi = teY, vi = teW, method = "HE")$tau2
-  }
-  
-  # Random effect weights: inverse of sum of within- and between-study variability
-  STWEIGHTS_ran <- 1/((1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud)))
-  
-  # Calculate weighted average.
-  MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran), 1, sum))/(apply(STWEIGHTS_ran, 1 ,sum))
-  
-  # CI for weighted average based on weighted variance CI
-  CI.MA.weightedVariance <- (apply((STWEIGHTS_ran*(STHEDGE - MA.WeightedAvg)^2), c(1), sum))/((nstud - 1) * apply(STWEIGHTS_ran,1,sum))
-  CI.MA.upper.weightVar <- matrix(MA.WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
-  CI.MA.lower.weightVar <- matrix(MA.WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
-  
-  ########################################################################################################################################################################
-  ########################################################################################################################################################################
-  
-  ####************####
-  #### IBMA: 3e level using FLAME
-  ####************####
-  
-  # Write auxiliarly files to DataWrite. We need:
-  # STCOPE in nifti
-  # STVARCOPE in nifti
-  # 4D mask
-  # design.mat file
-  # design.grp file
-  # design.con file
-  
-  #----- 1 ----#
-  ### Design.mat
-  fileCon <- paste(DataWrite,"/STdesign.mat",sep="")
-  # Text to be written to the file
-  cat('/NumWaves\t1
-      /NumPoints\t',paste(nstud,sep=''),'
-      /PPheights\t\t1.000000e+00
-      
-      /Matrix
-      ',rep("1.000000e+00\n",nstud),file=fileCon)
-  
-  #----- 2 ----#
-  ### Design.con
-  fileCon <- file(paste(DataWrite,"/STdesign.con", sep=""))
-  writeLines('/ContrastName1	Group Average
-             /NumWaves	1
-             /NumContrasts	1
-             /PPheights		1.000000e+00
-             /RequiredEffect		5.034
-             
-             /Matrix
-             1.000000e+00
-             ',fileCon)
-  close(fileCon)
-  
-  #----- 3 ----#
-  ### Design.grp
-  fileCon <- paste(DataWrite,"/STdesign.grp",sep="")
-  # Text to be written to the file
-  cat('/NumWaves\t1
-      /NumPoints\t',paste(nstud,sep=''),'
-      
-      /Matrix
-      ',rep("1\n",nstud),file=fileCon)
-  
-  #----- 4 ----#
-  ### STCOPE.nii
-  STCOPE4D <- nifti(img=array(STCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
-  writeNIfTI(STCOPE4D, filename = paste(DataWrite,'/STCOPE',sep=''),gzipped=FALSE)
-  
-  #----- 5 ----#
-  ### VARCOPE.nii
-  STVARCOPE4D <- nifti(img=array(STVARCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
-  writeNIfTI(STVARCOPE4D, filename = paste(DataWrite,'/STVARCOPE',sep=''),gzipped=FALSE)
-  
-  #----- 6 ----#
-  ### mask.nii
-  mask <- nifti(img=array(1, dim=c(DIM,nstud)), dim=c(DIM,nstud), datatype=2)
-  writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
-  
-  # FSL TIME!
-  setwd(DataWrite)
-  command <- paste(fslpath, 'flameo --cope=STCOPE --vc=STVARCOPE --mask=mask --ld=MA_stats --dm=STdesign.mat --cs=STdesign.grp --tc=STdesign.con --runmode=flame1', sep='')
-  Sys.setenv(FSLOUTPUTTYPE="NIFTI")
-  system(command)
+      #  metafor::rma(yi = teY, vi = teW, method = "REML")$tau2
+    }
     
-  ### Now CI around COPE
-  IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
-  IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
-  # Degrees of freedom:
-  tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[5,5,5]
-  
-  CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
-  CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
-  
+    # Random effect weights: inverse of sum of within- and between-study variability
+    STWEIGHTS_ran <- 1/((1/STWEIGHTS) + array(ESTTAU, dim = c(prod(DIM), nstud)))
+    
+    # Calculate weighted average.
+    MA.WeightedAvg <- (apply((STHEDGE*STWEIGHTS_ran), 1, sum))/(apply(STWEIGHTS_ran, 1 ,sum))
+    
+    # CI for weighted average based on weighted variance CI
+    CI.MA.weightedVariance <- (apply((STWEIGHTS_ran*(STHEDGE - MA.WeightedAvg)^2), c(1), sum))/((nstud - 1) * apply(STWEIGHTS_ran,1,sum))
+    CI.MA.upper.weightVar <- matrix(MA.WeightedAvg,ncol=1) + (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
+    CI.MA.lower.weightVar <- matrix(MA.WeightedAvg,ncol=1) - (qt(0.975,df=nstud-1) * sqrt(matrix(CI.MA.weightedVariance,ncol=1)))
+
+    # Degrees of freedom, not really needed for this scenario, but I add it
+    # as it will be in the data frame with the results.
+    tdof_t1 <- nstud - 1
+  }  
+  ########################################################################################################################################################################
+  ########################################################################################################################################################################
+
+  # Scenario GLM
+  if(SCEN == 'GLM'){
+    ####************####
+    #### IBMA: 3e level using FLAME
+    ####************####
+    
+    # Write auxiliarly files to DataWrite. We need:
+    # STCOPE in nifti
+    # STVARCOPE in nifti
+    # 4D mask
+    # design.mat file
+    # design.grp file
+    # design.con file
+    
+    #----- 1 ----#
+    ### Design.mat
+    fileCon <- paste(DataWrite,"/STdesign.mat",sep="")
+    # Text to be written to the file
+    cat('/NumWaves\t1
+        /NumPoints\t',paste(nstud,sep=''),'
+        /PPheights\t\t1.000000e+00
+        
+        /Matrix
+        ',rep("1.000000e+00\n",nstud),file=fileCon)
+    
+    #----- 2 ----#
+    ### Design.con
+    fileCon <- file(paste(DataWrite,"/STdesign.con", sep=""))
+    writeLines('/ContrastName1	Group Average
+               /NumWaves	1
+               /NumContrasts	1
+               /PPheights		1.000000e+00
+               /RequiredEffect		5.034
+               
+               /Matrix
+               1.000000e+00
+               ',fileCon)
+    close(fileCon)
+    
+    #----- 3 ----#
+    ### Design.grp
+    fileCon <- paste(DataWrite,"/STdesign.grp",sep="")
+    # Text to be written to the file
+    cat('/NumWaves\t1
+        /NumPoints\t',paste(nstud,sep=''),'
+        
+        /Matrix
+        ',rep("1\n",nstud),file=fileCon)
+    
+    #----- 4 ----#
+    ### STCOPE.nii
+    STCOPE4D <- nifti(img=array(STCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
+    writeNIfTI(STCOPE4D, filename = paste(DataWrite,'/STCOPE',sep=''),gzipped=FALSE)
+    
+    #----- 5 ----#
+    ### VARCOPE.nii
+    STVARCOPE4D <- nifti(img=array(STVARCOPE,dim=c(DIM,nstud)),dim=c(DIM,nstud),datatype = 16)
+    writeNIfTI(STVARCOPE4D, filename = paste(DataWrite,'/STVARCOPE',sep=''),gzipped=FALSE)
+    
+    #----- 6 ----#
+    ### mask.nii
+    mask <- nifti(img=array(1, dim=c(DIM,nstud)), dim=c(DIM,nstud), datatype=2)
+    writeNIfTI(mask, filename = paste(DataWrite,'/mask',sep=''),gzipped=FALSE)
+    
+    # FSL TIME!
+    setwd(DataWrite)
+    command <- paste(fslpath, 'flameo --cope=STCOPE --vc=STVARCOPE --mask=mask --ld=MA_stats --dm=STdesign.mat --cs=STdesign.grp --tc=STdesign.con --runmode=flame1', sep='')
+    Sys.setenv(FSLOUTPUTTYPE="NIFTI")
+    system(command)
+      
+    ### Now CI around COPE
+    IBMA.COPE <- matrix(readNIfTI(paste(DataWrite,"/MA_stats/cope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1)
+    IBMA.SE <- sqrt(matrix(readNIfTI(paste(DataWrite,"/MA_stats/varcope1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[,,],ncol=1))
+    # Degrees of freedom:
+    tdof_t1 <- readNIfTI(paste(DataWrite,"/MA_stats/tdof_t1.nii",sep=""), verbose=FALSE, warn=-1, reorient=TRUE, call=NULL)[5,5,5]
+    
+    CI.IBMA.upper.t <- IBMA.COPE +  (qt(0.975,df=tdof_t1) * IBMA.SE)
+    CI.IBMA.lower.t <- IBMA.COPE -  (qt(0.975,df=tdof_t1) * IBMA.SE)
+    
+  }
   ########################################################################################################################################################################
   ########################################################################################################################################################################
   
@@ -543,13 +572,14 @@ for(p in 1:NumPar){
   # Create data frame with all info through looping over the factor with all
   #  parameters and bind to tibble.
   for(j in 1:length(levels(saveParam))){
-    tmpObject <- get(levels(saveParam)[j])
+    tmpObject <- try(get(levels(saveParam)[j]), silent = TRUE)
+      if(class(tmpObject) =='try-error') next
     nameObject <- levels(saveParam)[j]
     MAvsIBMAres <- GetTibble(data = tmpObject, nameParam = nameObject, 
-                             est_tau2 = SCEN, sim = K,
+                             SCEN = SCEN, sim = K,
                       DIM = DIM, BOLDC_p = BOLDC_p,
                       sigmaW = sqrt(sigma2W), sigmaM = sqrt(sigma2M),
-                      nstud = nstud,tdof_t1 =  tdof_t1) %>%
+                      nstud = nstud, tdof_t1 =  tdof_t1) %>%
       bind_rows(MAvsIBMAres, .)
   }
 }
