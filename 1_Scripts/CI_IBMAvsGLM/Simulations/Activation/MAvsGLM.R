@@ -1,5 +1,5 @@
 ####################
-#### TITLE:     MA vs GLM using FSL's FLAME on the COPE and VARCOPES: activation.
+#### TITLE:     MA vs GLM using FSL's FLAME on the COPE and VARCOPES.
 #### Contents:
 ####
 #### Source Files:
@@ -43,19 +43,19 @@ t1 <- Sys.time()
 # Take argument from master file
 input <- commandArgs(TRUE)
 # K'th simulation
-K <- try(as.numeric(as.character(input)[1]),silent=TRUE)
+K <- try(as.numeric(as.character(input)[1]), silent=TRUE)
 # Which scenario: GLM, MA using DL, MA using HE or MA using REML?
 SCEN <- try(as.character(input)[2], silent=TRUE)
 # Which machine
-MACHINE <- try(as.character(input)[3],silent=TRUE)
+MACHINE <- try(as.character(input)[3], silent=TRUE)
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
   K <- 1
-  SCEN <- 'REML'
+  SCEN <- 'HE'
 }
 # DataWrite directory: where all temp FSL files are written to
-DataWrite <- try(as.character(input)[4],silent=TRUE)
+DataWrite <- try(as.character(input)[4], silent=TRUE)
 
 # Check if SCEN contains one of the values that we need
 if(!SCEN %in% c('GLM', 'DL', 'HE', 'REML')){
@@ -121,6 +121,12 @@ MAvsIBMAres <- tibble(sim = integer(),
 ### Functions
 ###############
 ##
+
+# Function to generate MA level data for each voxel and each study
+generateMALevel <- function(n, XM, Beta_M, sigma2M){
+  MAData <- XM * Beta_M + rnorm(n = n, mean = 0, sd = sqrt(sigma2M))
+  return(MAData)
+}
 
 # Function to generate a time series (for one voxel) 
 # for each subject & study.
@@ -282,31 +288,41 @@ for(p in 1:NumPar){
   XM <- rep(1, nstud)
   # The effect at population level represents the %BOLD signal change
   Beta_M <- BOLDC_p
-  MAData <- XM * Beta_M + rnorm(n = nstud, mean = 0, sd = sqrt(sigma2M))
-
+  # We will generate a MA level value for each voxel and each study
+  # Dimension: voxel x study
+  MAData <- array(replicate(n = prod(DIM), 
+               generateMALevel(n = prod(DIM) * nstud,
+                               XM = XM, Beta_M = Beta_M, sigma2M = sigma2M),
+            simplify = 'array'), 
+            dim = c(prod(DIM), nstud))
+  
   # For loop over studies
   for(t in 1:nstud){
     print(paste('At study ', t, ', parameter ', p, ' in simulation ', K, sep=''))
 
     # Generate the study-level (2e level) data using the model:
     # XG * Beta_G + E_G, where Beta_G comes from the meta-analysis level
-    SLData <- XG * MAData[t] + rnorm(n = nsub, mean = 0, sd = sqrt(sigma2B))
-    
+    # First we generate the noise (between-subject variability)
+    noiseStudy <- array(rnorm(n = prod(DIM) * nsub, mean = 0, sd = sqrt(sigma2B)), 
+          dim = c(prod(DIM), nsub))
+    # Now we take the MA value for this study and add the noise.
+    # Dimension: voxel x nsub (so value per voxel and subject)
+    SLData <- t(matrix(XG, ncol = 1) %*% matrix(MAData[,t], nrow = 1)) + 
+      noiseStudy
+
     # For loop over nsub
     for(s in 1:nsub){
       # Generate the signal in EACH voxel. 
       # First level model: X * Beta + E
       # No smoothing of noise as we are unable to calculate the true value of
       #   the effect size if we do so.
-      # Run the generateTimeSeries function for each voxel.
-      # Replicate is used to run the random number generator function several times.
+      # Within subject noise: dimension = time x voxels
+      noiseSubj <- array(rnorm(n = prod(DIM) * nscan, mean = 0, sd = sqrt(sigma2W)),
+                         dim = c(nscan, prod(DIM)))
+      # Actual data
       # Directly in correct dimension (Y = t x V).
-      Y.data <- replicate(n = prod(DIM), generateTimeSeries(nscan = nscan,
-                                BETA = SLData[s],
-                                int = intcpt,
-                                X = X,
-                                sigma2W = sigma2W),
-                          simplify = "array")
+      Y.data <- intcpt + matrix(X, ncol = 1) %*% matrix(SLData[,s], nrow = 1) +
+        noiseSubj
       
       ####************####
       #### ANALYZE DATA: 1e level GLM
@@ -593,13 +609,8 @@ for(p in 1:NumPar){
 saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/ActMAvsIBMA_',K,'.rda', sep=''),
         compress = TRUE)
 
-# Print time
+# Print time: potentially equals 3.121572 hours!
 print(Sys.time() - t1)
-
-
-
-
-
 
 
 
