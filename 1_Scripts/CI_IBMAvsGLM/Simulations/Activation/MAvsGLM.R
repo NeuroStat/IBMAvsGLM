@@ -111,7 +111,9 @@ MAvsIBMAres <- tibble(sim = integer(),
                       parameter = saveParam,
                       SCEN = factor(levels = c('GLM', 'DL', 'HE', 'REML')),
                       BOLDC = numeric(),
+                      ratioBW = numeric(),
                       sigmaW = numeric(),
+                      sigmaB = numeric(),
                       sigmaM = numeric(),
                       nstud = numeric(),
                       FLAMEdf_3 = numeric())
@@ -136,7 +138,8 @@ generateTimeSeries <- function(nscan, BETA, int, X, sigma2W){
 }
 
 # Function to gather results into tibbles
-GetTibble <-function(data, nameParam, SCEN, sim, DIM, BOLDC_p, sigmaW, sigmaM, nstud, tdof_t1){
+GetTibble <-function(data, nameParam, SCEN, sim, DIM, BOLDC_p, ratioBW, 
+                     sigmaW, sigmaB, sigmaM, nstud, tdof_t1){
   gather_data <- data.frame('sim' = as.integer(sim),
                             'voxel' = as.vector(1:prod(DIM)),
                             'value' = matrix(data, ncol = 1),
@@ -145,7 +148,9 @@ GetTibble <-function(data, nameParam, SCEN, sim, DIM, BOLDC_p, sigmaW, sigmaM, n
                             'SCEN' = factor(SCEN,
                                           levels = c('GLM', 'DL', 'HE', 'REML')),
                             'BOLDC' = BOLDC_p,
+                            'ratioBW' = ratioBW,
                             'sigmaW' = sigmaW,
+                            'sigmaB' = sigmaB,
                             'sigmaM' = sigmaM,
                             'nstud' = nstud,
                             'FLAMEdf_3' = tdof_t1)
@@ -209,11 +214,13 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 #### Simulation parameters
 ##############################
 
-# Within-subject variance --> white noise: high, medium and low amount of noise (i.e. sigma_W)
-whiteSigma2W_vec <- trueMCvalues('sim_act', 'TrueSigma2W')
+# Ratio of between- over within-subject variability
+ratioBW_vec <- c(0.25, 0.50, 0.75)
 
-# Between-subject variability, note: sigma^2_B/(sigma^2_W * design_factor) = 0.5
-TrueSigma2B_vec <- trueMCvalues('sim_act', 'TrueSigma2B')
+# Within-subject variance --> white noise: high, medium and low amount of noise (i.e. sigma_W)
+# Here we just have 1:3 corresponding to high to low amount of noise
+whiteSigma2W_vec <- 1:3
+# NOTE: between-subject variability: moves with within-subject variability
 
 # Between-study variability: based on I^2 measure.
 TrueSigma2M_vec <- trueMCvalues('sim_act', 'TrueSigma2M')
@@ -223,6 +230,7 @@ nstud_vec <- trueMCvalues('sim_act', 'nstud')
 
 # Data frame with combinations
 ParamComb <- expand.grid('BOLDC' = BOLDC,
+                'RatioBW' = ratioBW_vec,
                 'Sigma2W' = whiteSigma2W_vec,
                 'Sigma2M' = TrueSigma2M_vec,
                 'nstud' = nstud_vec)
@@ -271,11 +279,14 @@ for(p in 1:NumPar){
   print(paste('At parameter ', p, ' in simulation ', K, sep=''))
   
   # Select studies, amount of white noise, between-subject variability and between-study variability
-  sigma2W <- ParamComb[p, 'Sigma2W']
+  ratioBW <- ParamComb[p, 'RatioBW']
+  sigma2W <- trueMCvalues('sim_act', 'TrueSigma2W', ratioBW = ratioBW)[
+    ParamComb[p, 'Sigma2W']]
   sigma2M <- ParamComb[p, 'Sigma2M']
   nstud <- ParamComb[p, 'nstud']
   # Between-subject variability moves with white noise
-  sigma2B <- TrueSigma2B_vec[sigma2W == whiteSigma2W_vec]
+  sigma2B <- trueMCvalues('sim_act', 'TrueSigma2B', ratioBW = ratioBW)[
+    sigma2W == trueMCvalues('sim_act', 'TrueSigma2W', ratioBW = ratioBW)]
   # Select the effect parameter
   BOLDC_p <- ParamComb[p, 'BOLDC']
 
@@ -593,8 +604,9 @@ for(p in 1:NumPar){
     nameObject <- levels(saveParam)[j]
     MAvsIBMAres <- GetTibble(data = tmpObject, nameParam = nameObject, 
                              SCEN = SCEN, sim = K,
-                      DIM = DIM, BOLDC_p = BOLDC_p,
-                      sigmaW = sqrt(sigma2W), sigmaM = sqrt(sigma2M),
+                      DIM = DIM, BOLDC_p = BOLDC_p, ratioBW = ratioBW,
+                      sigmaW = sqrt(sigma2W), sigmaB = sqrt(sigma2B),
+                      sigmaM = sqrt(sigma2M),
                       nstud = nstud, tdof_t1 =  tdof_t1) %>%
       bind_rows(MAvsIBMAres, .)
   }
@@ -609,7 +621,7 @@ for(p in 1:NumPar){
 saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/ActMAvsIBMA_',K,'.rda', sep=''),
         compress = TRUE)
 
-# Print time: potentially equals 3.121572 hours!
+# Print time: potentially equals 3.121572 * 3 hours!
 print(Sys.time() - t1)
 
 

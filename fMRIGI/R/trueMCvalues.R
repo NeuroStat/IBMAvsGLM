@@ -10,15 +10,20 @@
 #'
 #' @param ID An identifier to select the appropriate simulation scenario.
 #' @param keyword The parameter that needs to be selected.
+#' @param ratioBW The ratio of between-subject variability over within-subject variability (default 0.50).
+#' Possible values are 0.25, 0.5 or 0.75.
 #'
 #' @details For ID, we have the following possibilities at the moment:
 #' * act_sim
 #' @md
 #'
 #' @export
-trueMCvalues <- function(ID = c('sim_act'), keyword){
+trueMCvalues <- function(ID = c('sim_act'), keyword, ratioBW = 0.5){
   # Check ID
   ID <- match.arg(ID)
+
+  # Check ratio of between- over within-subject variability
+  if(!ratioBW %in% c(0.25,0.5,0.75)) stop('ratioBW should be 0.25, 0.5 or 0.75')
 
   # Objects for different simulation settings
   if(ID == 'sim_act'){
@@ -73,10 +78,10 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     # plot(pred, type = 'l')
 
     # Extend the design matrix with an intercept
-    xIN <- cbind(base,pred)
+    xIN <- cbind(base, pred)
 
     # Contrast: not interested in intercept
-    CONTRAST <- matrix(c(0,1),nrow=1)
+    CONTRAST <- matrix(c(0,1), nrow=1)
 
     # Calculate (X'X)^(-1) with contrast
     design_factor <- CONTRAST %*% (solve(t(xIN) %*% xIN )) %*% t(CONTRAST)
@@ -112,18 +117,30 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     # Furthermore we have: d = beta/sigma_G
     # So we get for sigma_G:
     TrueSigmaG <- BOLDC[2]/TrueD
-    # Now we want that sigma^2_B / sigma^2_W = 0.5.
+    # Now we want that sigma^2_B / sigma^2_W = either 0.25, 0.5 or 0.75.
       # Work this out and you get:
-    # ---------------------------------------------------------------------------------
-    TrueSigma2B <- TrueSigmaG^2/3
-    TrueSigma2W <- (2*TrueSigmaG^2 / 3) / c(design_factor)
-    # Written otherwise: solve(design_factor) %*% (TrueSigmaG^2 - (TrueSigmaG^2/3))
-    # CHECK: TrueSigma2B / (design_factor %*% TrueSigma2W)
-    # CHECK: (design_factor %*% TrueSigma2W + TrueSigma2B) == TrueSigmaG^2
-    # CHECK: TrueSigma2B/TrueSigma2W
-    # Furthermore, the true value for Cohen's d should be:
-    # ----> BODLC/(sqrt(design_factor %*% TrueSigma2W + TrueSigma2B))
-    # CHECK: BOLDC[2]/sqrt((design_factor %*% TrueSigma2W + TrueSigma2B))
+    if(ratioBW == 0.25){
+      TrueSigma2B <- TrueSigmaG^2/5
+      TrueSigma2W <- (4 * TrueSigmaG^2)/(5 * c(design_factor))
+      # CHECK: TrueSigma2B / (design_factor %*% TrueSigma2W)
+    }
+    if(ratioBW == 0.50){
+      # ---------------------------------------------------------------------------------
+      TrueSigma2B <- TrueSigmaG^2/3
+      TrueSigma2W <- (2*TrueSigmaG^2 / 3) / c(design_factor)
+      # Written otherwise: solve(design_factor) %*% (TrueSigmaG^2 - (TrueSigmaG^2/3))
+      # CHECK: TrueSigma2B / (design_factor %*% TrueSigma2W)
+      # CHECK: (design_factor %*% TrueSigma2W + TrueSigma2B) == TrueSigmaG^2
+      # CHECK: TrueSigma2B/TrueSigma2W
+      # Furthermore, the true value for Cohen's d should be:
+      # ----> BODLC/(sqrt(design_factor %*% TrueSigma2W + TrueSigma2B))
+      # CHECK: BOLDC[2]/sqrt((design_factor %*% TrueSigma2W + TrueSigma2B))
+    }
+    if(ratioBW == 0.75){
+      TrueSigma2B <- (3 * TrueSigmaG^2)/7
+      TrueSigma2W <- (4 * TrueSigmaG^2)/(7 * c(design_factor))
+      # CHECK: TrueSigma2B / (design_factor %*% TrueSigma2W)
+    }
 
     ###################
     #### True variability between-studies
@@ -134,7 +151,8 @@ trueMCvalues <- function(ID = c('sim_act'), keyword){
     Tau <- sqrt(c(0,0.10,0.495))
     # I^2 is the observed excessive dispersion over the total amount of variability
     # Thus we have: TrueSigma2M / (TrueSigma2M + TrueSigma2B + TrueSigma2W) == I2
-    I2 <- c(0, 62.61, 87.28) / 100
+    # I2 <- c(0, 62.61, 87.28) / 100
+    I2 <- c(0, 50.00, 90.00) / 100
     # Work this out and we get:
     TrueSigma2M <- (I2*TrueSigma2W + I2*TrueSigma2B) / (1 - I2)
     #(I2*TrueSigma2W*c(design_factor) + I2*TrueSigma2B*c(design_lvl2)) / (1 - I2)
