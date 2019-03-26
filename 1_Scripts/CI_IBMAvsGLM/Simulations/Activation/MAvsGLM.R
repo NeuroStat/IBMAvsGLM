@@ -42,20 +42,28 @@ t1 <- Sys.time()
 
 # Take argument from master file
 input <- commandArgs(TRUE)
+
 # K'th simulation
 K <- try(as.numeric(as.character(input)[1]), silent=TRUE)
+
 # Which scenario: GLM, MA using DL, MA using HE or MA using REML?
 SCEN <- try(as.character(input)[2], silent=TRUE)
+
+# Which ratio of between- over within subject variability do we run?
+ratioBW <- try(as.numeric(as.character(input)[3]), silent = TRUE)
+
 # Which machine
-MACHINE <- try(as.character(input)[3], silent=TRUE)
+MACHINE <- try(as.character(input)[4], silent=TRUE)
+
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
   K <- 1
   SCEN <- 'HE'
+  ratioBW <- 0.5
 }
 # DataWrite directory: where all temp FSL files are written to
-DataWrite <- try(as.character(input)[4], silent=TRUE)
+DataWrite <- try(as.character(input)[5], silent=TRUE)
 
 # Check if SCEN contains one of the values that we need
 if(!SCEN %in% c('GLM', 'DL', 'HE', 'REML')){
@@ -214,8 +222,8 @@ nsub <- trueMCvalues('sim_act', 'nsub')
 #### Simulation parameters
 ##############################
 
-# Ratio of between- over within-subject variability
-ratioBW_vec <- c(0.25, 0.50, 0.75)
+# Ratio of between- over within-subject variability:
+  # MOVED THIS TO SCRIPT STARTING THIS R SCRIPT
 
 # Within-subject variance --> white noise: high, medium and low amount of noise (i.e. sigma_W)
 # Here we just have 1:3 corresponding to high to low amount of noise
@@ -230,7 +238,6 @@ nstud_vec <- trueMCvalues('sim_act', 'nstud')
 
 # Data frame with combinations
 ParamComb <- expand.grid('BOLDC' = BOLDC,
-                'RatioBW' = ratioBW_vec,
                 'Sigma2W' = whiteSigma2W_vec,
                 'Sigma2M' = TrueSigma2M_vec,
                 'nstud' = nstud_vec)
@@ -279,7 +286,6 @@ for(p in 1:NumPar){
   print(paste('At parameter ', p, ' in simulation ', K, sep=''))
   
   # Select studies, amount of white noise, between-subject variability and between-study variability
-  ratioBW <- ParamComb[p, 'RatioBW']
   sigma2W <- trueMCvalues('sim_act', 'TrueSigma2W', ratioBW = ratioBW)[
     ParamComb[p, 'Sigma2W']]
   sigma2M <- ParamComb[p, 'Sigma2M']
@@ -618,7 +624,7 @@ for(p in 1:NumPar){
 ### Save object
 ###############
 ##
-saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/ActMAvsIBMA_',K,'.rda', sep=''),
+saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/RatioBW_',ratioBW,'/ActMAvsIBMA_',K,'.rda', sep=''),
         compress = TRUE)
 
 # Print time: potentially equals 3.121572 * 3 hours!
