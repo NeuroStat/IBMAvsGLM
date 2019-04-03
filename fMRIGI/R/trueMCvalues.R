@@ -151,27 +151,11 @@ trueMCvalues <- function(ID = c('sim_act'), keyword, ratioBW = 0.5){
     Tau <- sqrt(c(0,0.10,0.495))
     # I^2 is the observed excessive dispersion over the total amount of variability
     # Thus we have: TrueSigma2M / (TrueSigma2M + TrueSigma2B + TrueSigma2W) == I2
-    # I2 <- c(0, 62.61, 87.28) / 100
+      # I2 <- c(0, 62.61, 87.28) / 100
     I2 <- c(0, 50.00, 90.00) / 100
     # Work this out and we get:
     TrueSigma2M <- (I2*TrueSigma2W + I2*TrueSigma2B) / (1 - I2)
-    #(I2*TrueSigma2W*c(design_factor) + I2*TrueSigma2B*c(design_lvl2)) / (1 - I2)
-    # CHECK: TrueSigma2M / (TrueSigma2M + TrueSigma2B + TrueSigma2W)
-    #Xg <- matrix(1, nrow = 10)
-    #design_lvl2 <- solve(t(Xg) %*% Xg)
-    #(I2*TrueSigma2W + I2*TrueSigma2B) / (1 - I2)
-    #test <- (I2*TrueSigma2W*c(design_factor) + I2*TrueSigma2B*c(design_lvl2)) / (1 - I2)
-    #test <- (I2*TrueSigma2W*c(design_factor) + I2*TrueSigma2B) / (1 - I2)
-    #sqrt(test)
-
-    # Group design matrix
-    Xg <- matrix(1, nrow = nsub)
-    design_lvl2 <- solve(t(Xg) %*% Xg)
-    var2LVLS <- (TrueSigma2B + TrueSigma2W * c(design_factor)) * c(design_lvl2)
-    #var2LVLS <- (TrueSigma2B * c(design_factor_lvl2) + TrueSigma2W * c(design_factor))
-    COMBs <- expand.grid(var2LVLS, TrueSigma2M)
-    COMBs$TrueDs <- BOLDC[2] / sqrt(COMBs$Var1 + COMBs$Var2)
-    COMBs
+      # CHECK: TrueSigma2M / (TrueSigma2M + TrueSigma2B + TrueSigma2W)
   }
 
   # Check whether keyword matches one of the objects

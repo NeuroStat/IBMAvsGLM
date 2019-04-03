@@ -26,10 +26,16 @@ srcdir=/user/scratch/gent/gvo000/gvo00022/vsc"$vsc"/IBMAvsMA
 cd $srcdir
 #----------------------------------------------------#
 
+#----------------------------------------------------#
+# CHOOSE YOUR SCENARIO: ESTIMATOR FOR BETWEEN-STUDY
+  # HETEROGENEITY IN CASE OF STNADARDIZED EFFECT SIZES
+  # OPTIONS: GLM, DL, HE or REML
+SCEN="HE"
+#----------------------------------------------------#
 
 #----------------------------------------------------#
 # GO TIME: RUN THAT THING
-Rscript PreProcessGLMvsIBMA_Act.R "HPC" "$srcdir/Results/HE"
+Rscript PreProcessGLMvsIBMA_Act.R "HPC" "$srcdir/Results/" "$SCEN" 
 #----------------------------------------------------#
 
 
