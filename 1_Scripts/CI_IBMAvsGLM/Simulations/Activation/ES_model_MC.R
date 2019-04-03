@@ -99,12 +99,12 @@ for(i in 1:nsim){
     Y <- X %*% Tes + rnorm(n = nstud, mean = 0, sd = sqrt(sigm2U[j])) +
       rnorm(n = nstud, mean = 0, sd = sqrt(sigm2E))
     
+    # Weights of each study
+    vi <- NeuRRoStat::varHedgeT(g = Y, N = nsubS)
+    
     # Fit the model using rma + HE or REML estimator for tau2
     fitHE <- rma(yi = Y, vi = vi, method = 'HE')
     fitREML <- rma(yi = Y, vi = vi, method = 'REML')
-    
-    # Weights of each study
-    vi <- NeuRRoStat::varHedgeT(g = Y, N = nsubS)
     
     # Between study variability: DL estimator
     tau2_DL <- NeuRRoStat::tau(Y = Y, W = (1/vi), k = length(Y))
