@@ -1,7 +1,7 @@
 #!/bin/sh
 #
 #
-#PBS -N GLMvsMA
+#PBS -N GLM
 #PBS -o output/output.file
 #PBS -e error/error.file
 #PBS -m a
@@ -39,19 +39,10 @@ SCEN="HE"
 #----------------------------------------------------#
 
 #----------------------------------------------------#
-# CHOOSE YOUR RATIO OF BETWEEN- OVER WITHIN-STUDY 
-	# VARIABILITY
-	# OPTIONS: 0.25, 0.5 or 0.75
-RATIO=0.25
-#----------------------------------------------------#
-
-#----------------------------------------------------#
 # CREATE THE FOLDERS IN RESULTS
 cd Results
 mkdir $SCEN
 cd $SCEN
-mkdir RatioBW_$RATIO
-cd RatioBW_$RATIO
 # This folder is used to write intermediate files!
 mkdir ${PBS_ARRAYID}
 cd $srcdir
@@ -60,5 +51,5 @@ cd $srcdir
 
 #----------------------------------------------------#
 # GO TIME: RUN THIS SCENARIO
-Rscript MAvsGLM.R ${PBS_ARRAYID} "$SCEN" "$RATIO" "HPC" "$srcdir/Results/$SCEN/RatioBW_$RATIO/${PBS_ARRAYID}"
+Rscript MAvsGLM.R ${PBS_ARRAYID} "$SCEN" "HPC" "$srcdir/Results/$SCEN/${PBS_ARRAYID}"
 #----------------------------------------------------#

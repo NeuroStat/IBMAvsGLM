@@ -49,21 +49,17 @@ K <- try(as.numeric(as.character(input)[1]), silent=TRUE)
 # Which scenario: GLM, MA using DL, MA using HE or MA using REML?
 SCEN <- try(as.character(input)[2], silent=TRUE)
 
-# Which ratio of between- over within subject variability do we run?
-ratioBW <- try(as.numeric(as.character(input)[3]), silent = TRUE)
-
 # Which machine
-MACHINE <- try(as.character(input)[4], silent=TRUE)
+MACHINE <- try(as.character(input)[3], silent=TRUE)
 
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
   K <- 1
   SCEN <- 'HE'
-  ratioBW <- 0.5
 }
 # DataWrite directory: where all temp FSL files are written to
-DataWrite <- try(as.character(input)[5], silent=TRUE)
+DataWrite <- try(as.character(input)[4], silent=TRUE)
 
 # Check if SCEN contains one of the values that we need
 if(!SCEN %in% c('GLM', 'DL', 'HE', 'REML')){
@@ -215,15 +211,15 @@ BOLDC <- trueMCvalues('sim_act', 'BOLDC')
 # Base of signal (i.e. intercept)
 intcpt <- trueMCvalues('sim_act', 'base')
 
-# Number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
-nsub <- trueMCvalues('sim_act', 'nsub')
+# Average number of subject: median sample size at 2018 = 28.5 (Poldrack et al., 2017)
+AVGNsub <- trueMCvalues('sim_act', 'nsub')
 
 ##############################
 #### Simulation parameters
 ##############################
 
 # Ratio of between- over within-subject variability:
-  # MOVED THIS TO SCRIPT STARTING THIS R SCRIPT
+ratioBW_vec <- c(0.25, 0.5, 0.75)
 
 # Within-subject variance --> white noise: high, medium and low amount of noise (i.e. sigma_W)
 # Here we just have 1:3 corresponding to high to low amount of noise
@@ -238,6 +234,7 @@ nstud_vec <- trueMCvalues('sim_act', 'nstud')
 
 # Data frame with combinations
 ParamComb <- expand.grid('BOLDC' = BOLDC,
+                'ratioBW' = ratioBW_vec,
                 'Sigma2W' = whiteSigma2W_vec,
                 'Sigma2M' = TrueSigma2M_vec,
                 'nstud' = nstud_vec)
@@ -271,8 +268,6 @@ X_prep <- simprepTemporal(total,1,onsets = onsets,
 # Generate the design matrix for each voxel
 X <- simTSfmri(design=X_prep, base = 0, SNR = 1, noise = "none", verbose = FALSE)
 
-### SECOND LEVEL ###
-XG <- rep(1, nsub)
 
 ##################
 #### GENERATE DATA
@@ -284,6 +279,9 @@ print(paste('RUNNING SCENARIO: ', SCEN, sep = ''))
 # For loop over the data generating parameters
 for(p in 1:NumPar){
   print(paste('At parameter ', p, ' in simulation ', K, sep=''))
+  
+  # Select the ratio of between- over within-subject variability
+  ratioBW <- ParamComb[p, 'ratioBW']
   
   # Select studies, amount of white noise, between-subject variability and between-study variability
   sigma2W <- trueMCvalues('sim_act', 'TrueSigma2W', ratioBW = ratioBW)[
@@ -297,7 +295,6 @@ for(p in 1:NumPar){
   BOLDC_p <- ParamComb[p, 'BOLDC']
 
   # Empty vectors
-  COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
   STHEDGE <- STWEIGHTS <- STCOPE <- STVARCOPE <- array(NA,dim=c(prod(DIM), nstud))
   
   # We start by generating values for each study using the model: Y_M = X_M*Beta_M + E_M
@@ -316,6 +313,15 @@ for(p in 1:NumPar){
   # For loop over studies
   for(t in 1:nstud){
     print(paste('At study ', t, ', parameter ', p, ' in simulation ', K, sep=''))
+
+    ### SECOND LEVEL PARAMETERS ###    
+    
+    # Get a number of subjects for this study
+    nsub <- round(rnorm(n = 1, mean = AVGNsub, sd = 5), 0)
+    # Design matrix
+    XG <- rep(1, nsub)
+    # Empty vectors
+    COPE <- VARCOPE <- array(NA,dim=c(prod(DIM),nsub))
 
     # Generate the study-level (2e level) data using the model:
     # XG * Beta_G + E_G, where Beta_G comes from the meta-analysis level
@@ -508,12 +514,21 @@ for(p in 1:NumPar){
     # Degrees of freedom, not really needed for this scenario, but I add it
     # as it will be in the data frame with the results.
     tdof_t1 <- nstud - 1
+    
+    # Remove the STHEDGE and STWEIGHTS, these take too much space in the R memory
+    rm(STHEDGE, STWEIGHTS)
+    
+    # Same with CI.MA.weightedVariance and STWEIGHTS_ran
+    rm(CI.MA.weightedVariance, STWEIGHTS_ran)
   }  
   ########################################################################################################################################################################
   ########################################################################################################################################################################
 
   # Scenario GLM
   if(SCEN == 'GLM'){
+    # As we do not need STHEDGE or STWEIGHTS for this approach, we remove them here
+    rm(STHEDGE, STWEIGHTS)
+    
     ####************####
     #### IBMA: 3e level using FLAME
     ####************####
@@ -624,7 +639,7 @@ for(p in 1:NumPar){
 ### Save object
 ###############
 ##
-saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/RatioBW_',ratioBW,'/ActMAvsIBMA_',K,'.rda', sep=''),
+saveRDS(MAvsIBMAres, file = paste(wd,'/Results/',SCEN,'/ActMAvsIBMA_',K,'.rda', sep=''),
         compress = TRUE)
 
 # Print time: potentially equals 3.121572 * 3 hours!
