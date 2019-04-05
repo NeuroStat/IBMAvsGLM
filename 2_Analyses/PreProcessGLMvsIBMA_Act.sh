@@ -1,11 +1,11 @@
 #!/bin/sh
 #
 #
-#PBS -N PreProcessAct
+#PBS -N HEPreProcessAct
 #PBS -o output/output.file
 #PBS -e error/error.file
 #PBS -m a
-#PBS -l walltime=04:00:00
+#PBS -l walltime=05:00:00
 #PBS -l vmem=20GB
 #
 
@@ -35,7 +35,7 @@ SCEN="HE"
 
 #----------------------------------------------------#
 # GO TIME: RUN THAT THING
-Rscript PreProcessGLMvsIBMA_Act.R "HPC" "$srcdir/Results/" "$SCEN" 
+Rscript PreProcessGLMvsIBMA_Act.R "HPC" "/user/data/gent/gvo000/gvo00022/vsc40728/IBMAvsGLM/Estimators/" "$SCEN" 
 #----------------------------------------------------#
 
 
