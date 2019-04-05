@@ -55,8 +55,8 @@ MACHINE <- try(as.character(input)[3], silent=TRUE)
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
-  K <- 1
-  SCEN <- 'HE'
+  K <- 416
+  SCEN <- 'REML'
 }
 # DataWrite directory: where all temp FSL files are written to
 DataWrite <- try(as.character(input)[4], silent=TRUE)
@@ -491,9 +491,13 @@ for(p in 1:NumPar){
     }
     if(SCEN == 'REML'){
       # Estimate tau2 in each voxel, using the individual studies
-      ESTTAU <- array(as.vector(mapply(getHE_REML, Y = STHEDGEL, W = STWEIGHTSL,
+      ESTTAU <- try(array(as.vector(mapply(getHE_REML, Y = STHEDGEL, W = STWEIGHTSL,
                                        method_tau = 'REML')), 
-                      dim = prod(DIM))
+                      dim = prod(DIM)), silent = TRUE)
+      # Problems with convergence:
+      if(class(ESTTAU) == 'try-error'){
+        ESTTAU <- array(NA, dim = prod(DIM))
+      }
       # If you want to check:    
       #  teY <- STHEDGEL[[728]]
       #  teW <- 1/STWEIGHTSL[[728]]
