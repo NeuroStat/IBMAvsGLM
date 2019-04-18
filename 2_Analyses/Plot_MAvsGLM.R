@@ -97,18 +97,20 @@ set.seed(1990)
 LIR <- list(
   'Take[GLMvsMA_wi_w_act]' = 
     "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/ProcessedResults",
-  'Take[Estimators]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Estimators/D_TrueVal/"
+  'Take[Estimators]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Estimators/D_TrueVal/",
+  'Take[VariableND]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/VariableN/TrueD/",
+  'Take[VariableNG]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/VariableN/TrueG/"
 )
-currentWD <- 2
+currentWD <- 4
 
 # Number of conficence intervals
 CIs <- c('MA-weightVar','GLM-t')
 NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
-info <- data.frame('Sim' = c(1,2),
-                   'nsim' = c(1000, 1000),
-                   'nsub' = rep(trueMCvalues('sim_act', 'nsub'),2))
+info <- data.frame('Sim' = c(1,2,3,4),
+                   'nsim' = c(1000, 1000, 1000, 1000),
+                   'nsub' = rep(trueMCvalues('sim_act', 'nsub'),4))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
 

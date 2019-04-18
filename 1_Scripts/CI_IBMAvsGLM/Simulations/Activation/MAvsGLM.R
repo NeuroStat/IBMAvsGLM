@@ -55,7 +55,7 @@ MACHINE <- try(as.character(input)[3], silent=TRUE)
 # If no machine is specified, then it has to be this machine!
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
-  K <- 416
+  K <- 990
   SCEN <- 'REML'
 }
 # DataWrite directory: where all temp FSL files are written to
@@ -316,8 +316,8 @@ for(p in 1:NumPar){
 
     ### SECOND LEVEL PARAMETERS ###    
     
-    # Get a number of subjects for this study
-    nsub <- round(rnorm(n = 1, mean = AVGNsub, sd = 5), 0)
+    # Get a number of subjects for this study with a minimal N of 3 subjects.
+    nsub <- max(3, round(rnorm(n = 1, mean = AVGNsub, sd = 5), 0))
     # Design matrix
     XG <- rep(1, nsub)
     # Empty vectors
