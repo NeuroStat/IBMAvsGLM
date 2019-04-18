@@ -342,8 +342,11 @@ for(s in 1:length(comps)){
             legend.text = element_text(face = 'bold', size = 12),
             plot.title = element_text(hjust = 0.5))
   
-    # Wait for a second
-    Sys.sleep(1)
+    # Print the plot (otherwise it does not store the colours!)
+    print(LoopPlot)
+    
+    # Wait for a second (otherwise objects are not created)
+    Sys.sleep(2)
     
     # Now assign to variable
     assign(x = paste0('plot_', comps[[s]][2], '_ratio_', ratioBW_vec[r]), LoopPlot)
@@ -511,7 +514,6 @@ for(s in 1:length(comps)){
     rm(LoopPlot)
   }
 }
-
 
 # Use cow package to get them into one plane: GLM vs DL
 legend_b <- get_legend(plot_bias_DL_ratio_0.5 + theme(legend.position="bottom"))
@@ -728,14 +730,14 @@ ggsave(filename = paste(saveFig, 'bias_GLMREML.png', sep = ''),
        width = 11.2, height = 9.18, units = 'in', scale = 1)
 
 # Coverage
-ggsave(filename = paste(saveFig, 'bias_GLMDL.png', sep = ''), 
-       plot = GLMDLbias,
+ggsave(filename = paste(saveFig, 'ci_GLMDL.png', sep = ''), 
+       plot = GLMDLci,
        width = 11.2, height = 9.18, units = 'in', scale = 1)
-ggsave(filename = paste(saveFig, 'bias_GLMHE.png', sep = ''), 
-       plot = GLMHEbias,
+ggsave(filename = paste(saveFig, 'ci_GLMHE.png', sep = ''), 
+       plot = GLMHEci,
        width = 11.2, height = 9.18, units = 'in', scale = 1)
-ggsave(filename = paste(saveFig, 'bias_GLMREML.png', sep = ''), 
-       plot = GLMREMLbias,
+ggsave(filename = paste(saveFig, 'ci_GLMREML.png', sep = ''), 
+       plot = GLMREMLci,
        width = 11.2, height = 9.18, units = 'in', scale = 1)
 
 
