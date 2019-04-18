@@ -7,6 +7,9 @@ OldCode.R
 .Rapp (Exemplaar met conflict van MacBook Air van Han 2016-01-25).history
 .Rhistory
 
+# R project user file
+.Rproj.user
+
 # R objects (they do not really belong on Github)
 RObjects
 
@@ -42,4 +45,5 @@ workflow.sublime-workspace
 3_Reports/21.05_04_19/
 3_Reports/22.15_04_19/
 
-.Rproj.user
+# The blinded path locations
+2_Analyses/blind_MAvsGLM.R

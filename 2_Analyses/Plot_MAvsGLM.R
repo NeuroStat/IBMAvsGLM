@@ -14,8 +14,7 @@
 ###############
 ##
 
-# Plotting the intermediate analyses of MA vs GLM approach. 
-# Contains null and activation data.
+# Plotting the analyses of MA vs GLM approach. 
 # 3-level simulation approach.
 
 # Blocked design for individual subjects.
@@ -24,10 +23,7 @@
 # The resulting images are converted to either Hedges' g and pooled using random effects meta-analysis.
 # OR using 3e level GLM with again FLAME1.
 
-# Data contains between-study heterogeneity
-
-# Set wd to base Github tree (line needs to be removed when making repo public)
-setwd('/Users/hanbossier/Dropbox/PhD/PhDWork/Meta Analysis/R Code/Studie_Simulation/SimulationGit')
+# Data contains between-study heterogeneity!
 
 ##
 ###############
@@ -93,14 +89,11 @@ date <- Sys.Date()
 # Set starting seed
 set.seed(1990)
 
-# Intermediate Results: this is location where summarized results are written
-LIR <- list(
-  'Take[GLMvsMA_wi_w_act]' = 
-    "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/GLMvsMA_wi_w_act/ProcessedResults",
-  'Take[Estimators]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/Estimators/D_TrueVal/",
-  'Take[VariableND]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/VariableN/TrueD/",
-  'Take[VariableNG]' = "/Volumes/2_TB_WD_Elements_10B8_Han/PhD/Simulation/Results/VariableN/TrueG/"
-)
+# Source paths
+source('blind_MAvsGLM.R')
+
+# Which scenario do we analyze?
+# Go for 4: variable N and true value for MA = G.
 currentWD <- 4
 
 # Number of conficence intervals
@@ -226,8 +219,8 @@ for(s in 1:length(SCEN)){
     dplyr::select(-wSimSDCov) %>%
     # Summarise over simulations
     group_by(parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
-    summarise(coverage = mean(wSimCoverage),
-              sdCoverage = sd(wSimCoverage)) %>%
+    summarise(coverage = mean(wSimCoverage, na.rm = TRUE),
+              sdCoverage = sd(wSimCoverage, na.rm = TRUE)) %>%
     bind_rows(CoveragePlot, .)
 
   ### COVERAGE AVERAGED OVER ALL SIMULATIONS ###
@@ -235,7 +228,7 @@ for(s in 1:length(SCEN)){
     CoverageViolinPlot <- readRDS(file = 
       paste(LIR[[currentWD]], '/', SCEN[s], '/coverage_all.rda', sep = '')) %>%
       group_by(voxel, parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
-      summarise(coverage = mean(cov_IND)) %>%
+      summarise(coverage = mean(cov_IND, na.rm = TRUE)) %>%
       bind_rows(CoverageViolinPlot, .)
   }
 
@@ -244,7 +237,7 @@ for(s in 1:length(SCEN)){
     paste(LIR[[currentWD]], '/', SCEN[s], '/CIlength_Vox.rda', sep = ''))
   # Summarise over simulations
   CIL <- CILdata %>% group_by(parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
-    summarise(AvgSimCIL = mean(AvCIlength)) %>%
+    summarise(AvgSimCIL = mean(AvCIlength, na.rm = TRUE)) %>%
     bind_rows(CIL, .)
   
   ### STANDARDIZED BIAS AVERAGED OVER ALL VOXELS ###
@@ -252,8 +245,8 @@ for(s in 1:length(SCEN)){
     paste(LIR[[currentWD]], '/', SCEN[s], '/bias_Vox.rda', sep = ''))
   # Summarise over simulations
   BIAS <- BiasData %>% group_by(parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
-    summarise(AvgBias = mean(Avbias),
-              SDBias = sd(Avbias)) %>%
+    summarise(AvgBias = mean(Avbias, na.rm = TRUE),
+              SDBias = sd(Avbias, na.rm = TRUE)) %>%
     mutate(StBias = AvgBias/SDBias * 100) %>%
     bind_rows(BIAS, .)
   
@@ -264,8 +257,8 @@ for(s in 1:length(SCEN)){
     # Summarise over simulations
     BIASviolin <- BiasData_all %>% 
       group_by(voxel, parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
-      summarise(AvgBias = mean(bias),
-                SDBias = sd(bias)) %>%
+      summarise(AvgBias = mean(bias, na.rm = TRUE),
+                SDBias = sd(bias, na.rm = TRUE)) %>%
       mutate(StBias = AvgBias/SDBias * 100) %>%
       bind_rows(BIASviolin, .)
   }
@@ -276,7 +269,7 @@ for(s in 1:length(SCEN)){
   # Summarise over simulations
   EstVar <- EstVarData %>% 
     group_by(parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
-    summarise(AvgSE = mean(AvgEstSE)) %>%
+    summarise(AvgSE = mean(AvgEstSE, na.rm = TRUE)) %>%
     bind_rows(EstVar, .)
 }
 
@@ -348,10 +341,7 @@ for(s in 1:length(comps)){
             title = element_text(face = 'bold', size = 12),
             legend.text = element_text(face = 'bold', size = 12),
             plot.title = element_text(hjust = 0.5))
-    
-    # Print the plot
-    print(LoopPlot)
-    
+  
     # Wait for a second
     Sys.sleep(1)
     
@@ -370,7 +360,9 @@ prow <- plot_grid(plot_DL_ratio_0.25,
           plot_DL_ratio_0.75, 
           labels = c("A", "B", "C"), ncol = 3, align = "hv",
           axis = 'tblr', hjust = -1, nrow = 1)
-plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, 0.1))
+GLMDLci <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
 # Same for GLM vs HE
 legend_b <- get_legend(plot_HE_ratio_0.5 + theme(legend.position="bottom"))
@@ -379,7 +371,9 @@ prow <- plot_grid(plot_HE_ratio_0.25,
                   plot_HE_ratio_0.75, 
                   labels = c("A", "B", "C"), ncol = 3, align = "hv",
                   axis = 'tblr', hjust = -1, nrow = 1)
-plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, 0.1))
+GLMHEci <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
 # Finally for GLM vs REML
 legend_b <- get_legend(plot_REML_ratio_0.5 + theme(legend.position="bottom"))
@@ -388,7 +382,9 @@ prow <- plot_grid(plot_REML_ratio_0.25,
                   plot_REML_ratio_0.75, 
                   labels = c("A", "B", "C"), ncol = 3, align = "hv",
                   axis = 'tblr', hjust = -1, nrow = 1)
-plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, 0.1))
+GLMREMLci <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
 # If we have data for each voxel
 if(AllVox){
@@ -438,54 +434,6 @@ if(AllVox){
           legend.text = element_text(face = 'bold'),
           plot.title = element_text(hjust = 0.5))
 }
-
-#########################################################
-####################### CI LENGTH #######################
-#########################################################
-
-
-# Averaged over voxels: only for ratio 0.5 and GLM vs DL
-CIL %>%
-  # Select the ratio
-  filter(ratioBW == 0.50) %>%
-  # Select the comparison
-  filter(SCEN %in% comps[[1]]) %>%
-  # Column for activation YES/NO and turn into factor
-  mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
-  mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
-  # create labels for facets
-  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
-         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = '')) %>%
-  mutate(sigmaWLF = factor(sigmaWL, levels =
-   paste('sigma[W] ~ "=" ~ ',
-         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
-  mutate(sigmaMLF = factor(sigmaML, levels =
-    paste('sigma[M] ~ "=" ~ ',
-         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
-  # 4) plot the results
-  ggplot(., aes(x = nstud, y = AvgSimCIL)) + 
-  geom_line(aes(colour = parameter, linetype = signalF), size = 0.5) +
-  geom_point(aes(colour = parameter, fill = parameter), size = 1.05, 
-             show.legend = FALSE) +
-  scale_x_continuous('Number of studies in the third level') +
-  scale_y_continuous('Average 95% CI length') +
-  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
-                     values = c('#fdb462', '#bc80bd')) +
-  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
-                    values = c('#fdb462', '#bc80bd')) +
-  scale_linetype_manual('', values = c('dashed', 'solid')) +
-  facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
-  theme_bw() +
-  theme(legend.position = 'bottom',
-        axis.text = element_text(face = 'bold', size = 9),
-        strip.background = element_rect(fill = 'white', colour = 'white'),
-        strip.text = element_text(face = 'bold', size = 12),
-        title = element_text(face = 'bold', size = 12),
-        legend.text = element_text(face = 'bold'),
-        plot.title = element_text(hjust = 0))
-
-
 
 #########################################################
 ################### STANDARDIZED BIAS ###################
@@ -538,15 +486,7 @@ for(s in 1:length(comps)){
                                    'mixed effects GLM'),
                         values = c(colours[colours$scen == comps[[s]][2], 'cols'],
                                    colours[colours$scen == 'GLM', 'cols'])) +
-      #scale_x_continuous('Number of studies in the third level') +
-      #scale_y_continuous('Standardized bias') +
-      #scale_color_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
-      #                   values = c('#fdb462', '#bc80bd')) +
-      #scale_fill_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
-      #                  values = c('#fdb462', '#bc80bd')) +
       scale_linetype_manual('', values = c('dashed', 'solid')) +
-#      ggtitle('st bias = mean(estimate - true value) / sd(estimate - true value)',
-#              subtitle = 'calculated over simulations') +
       ggtitle(bquote(sigma[B]/sigma[W] == .(ratioBW_vec[r]))) +
       facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
       theme_bw() +
@@ -557,54 +497,12 @@ for(s in 1:length(comps)){
             title = element_text(face = 'bold', size = 12),
             legend.text = element_text(face = 'bold'),
             plot.title = element_text(hjust = 0))
-    
-      # CoveragePlot %>%
-      # mutate(sigmaWLF = factor(sigmaWL, levels = unique(sigmaWL))) %>%
-      # mutate(sigmaMLF = factor(sigmaML, levels = unique(sigmaML))) %>%
-      # # Select the ratio
-      # filter(ratioBW == ratioBW_vec[r]) %>% 
-      # # Select the comparison
-      # filter(SCEN %in% comps[[s]]) %>% 
-      # # 4) plot the results
-      # ggplot(., aes(x = nstud, y = coverage)) +
-      # geom_line(aes(colour = parameter, linetype = signalF), size = 0.9) +
-      # geom_point(aes(colour = parameter, fill = parameter), size = 0.95, show.legend = FALSE) +
-      # scale_x_continuous(ifelse(r == 2,
-      #                           'Number of studies in the third level', '')) +
-      # scale_y_continuous(ifelse(r == 1, 'Empirical coverage', ''),
-      #                    # I'm truncating the Y-axis otherwise you cannot see
-      #                    # differences between the methods...
-      #                    limits = c(0.8, 1)) +
-      # #limits = c(Y_min, 1)) +
-      # scale_color_manual('Model',
-      #                    labels = c(paste0('random effects MA: ', comps[[s]][2]),
-      #                               'mixed effects GLM'),
-      #                    values = c(colours[colours$scen == comps[[s]][2], 'cols'],
-      #                               colours[colours$scen == 'GLM', 'cols'])) +
-      # scale_fill_manual('Model',
-      #                   labels = c(paste0('random effects MA: ', comps[[s]][2]),
-      #                              'mixed effects GLM'),
-      #                   values = c(colours[colours$scen == comps[[s]][2], 'cols'],
-      #                              colours[colours$scen == 'GLM', 'cols'])) +
-      # scale_linetype_manual('', values = c('dashed', 'solid')) +
-      # geom_hline(aes(yintercept = 0.95), colour = 'black') +
-      # ggtitle(bquote(sigma[B]/sigma[W] == .(ratioBW_vec[r]))) +
-      # # ggtitle(paste0('Ratio: ', ratioBW_vec[r])) +
-      # facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
-      # theme_bw() +
-      # theme(legend.position = 'none',
-      #       axis.text = element_text(face = 'bold', size = 9, vjust = -1),
-      #       strip.background = element_rect(fill = 'white', colour = 'white'),
-      #       strip.text = element_text(face = 'bold', size = 12),
-      #       title = element_text(face = 'bold', size = 12),
-      #       legend.text = element_text(face = 'bold', size = 12),
-      #       plot.title = element_text(hjust = 0.5))
-    
-    # Print the plot
+
+    # Print the plot (otherwise it does not store the colours!)
     print(LoopPlot)
     
-    # Wait for a second
-    Sys.sleep(1)
+    # Wait for a second (otherwise objects are not created)
+    Sys.sleep(2)
     
     # Now assign to variable
     assign(x = paste0('plot_bias_', comps[[s]][2], '_ratio_', ratioBW_vec[r]), LoopPlot)
@@ -622,7 +520,9 @@ prow <- plot_grid(plot_bias_DL_ratio_0.25,
                   plot_bias_DL_ratio_0.75, 
                   labels = c("A", "B", "C"), ncol = 3, align = "hv",
                   axis = 'tblr', hjust = -1, nrow = 1)
-plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, 0.1))
+GLMDLbias <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
 # Same for GLM vs HE
 legend_b <- get_legend(plot_bias_HE_ratio_0.5 + theme(legend.position="bottom"))
@@ -631,7 +531,9 @@ prow <- plot_grid(plot_bias_HE_ratio_0.25,
                   plot_bias_HE_ratio_0.75, 
                   labels = c("A", "B", "C"), ncol = 3, align = "hv",
                   axis = 'tblr', hjust = -1, nrow = 1)
-plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, 0.1))
+GLMHEbias <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
 # Finally for GLM vs REML
 legend_b <- get_legend(plot_bias_REML_ratio_0.5 + theme(legend.position="bottom"))
@@ -640,133 +542,141 @@ prow <- plot_grid(plot_bias_REML_ratio_0.25,
                   plot_bias_REML_ratio_0.75, 
                   labels = c("A", "B", "C"), ncol = 3, align = "hv",
                   axis = 'tblr', hjust = -1, nrow = 1)
-plot_grid(prow, legend_b, ncol = 1, rel_heights = c(1, 0.1))
+GLMREMLbias <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
-
-# # Plot without the SD bars.
-#   BIAS %>%
-#   # Column for activation YES/NO and turn into factor
-#   mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
-#   mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
-#   # create labels for facets
-#   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-#          sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
-#          sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = '')) %>%
-#   mutate(sigmaWLF = factor(sigmaWL, levels =
-#      paste('sigma[W] ~ "=" ~ ',
-#        round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
-#   mutate(sigmaMLF = factor(sigmaML, levels =
-#      paste('sigma[M] ~ "=" ~ ',
-#        round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
-#   # 4) plot the results
-#   ggplot(., aes(x = nstud, y = AvgBias)) + 
-#   geom_line(aes(colour = parameter, linetype = signalF), size = 0.95) +
-#   geom_point(aes(colour = parameter, fill = parameter), size = 1.05, 
-#              show.legend = FALSE) +
-#   scale_x_continuous('Number of studies in the third level') +
-#   scale_y_continuous('Standardized bias') +
-#   scale_color_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
-#                      values = c('#fdb462', '#bc80bd')) +
-#   scale_fill_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
-#                     values = c('#fdb462', '#bc80bd')) +
-#   scale_linetype_manual('', values = c('dashed', 'solid')) +
-#   ggtitle('st bias = mean(estimate - true value) / sd(estimate - true value)',
-#           subtitle = 'calculated over simulations') +
-#   facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
-#   theme_bw() +
-#   theme(legend.position = 'bottom',
-#         axis.text = element_text(face = 'bold', size = 9),
-#         strip.background = element_rect(fill = 'white', colour = 'white'),
-#         strip.text = element_text(face = 'bold', size = 12),
-#         title = element_text(face = 'bold', size = 12),
-#         legend.text = element_text(face = 'bold'),
-#         plot.title = element_text(hjust = 0))
-
-
-# Violin plots without averaging over all voxels
-BIASviolin %>% 
-  ungroup() %>%
-  # Column for activation YES/NO and turn into factor
-  mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
-  mutate(signalF = factor(signal, levels = c('null', 'activation'),
-                        labels = c('null data', '3% BOLD signal change'))) %>%
-  filter(signal == 'null') %>%
-  # create labels for facets
-  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
-         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = '')) %>%
-  mutate(sigmaWLF = factor(sigmaWL, levels =
-   paste('sigma[W] ~ "=" ~ ',
-         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
-  mutate(sigmaMLF = factor(sigmaML, levels =
-   paste('sigma[M] ~ "=" ~ ',
-         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
-  # 4) plot the results
-  ggplot(., aes(x = factor(nstud), y = StBias, fill = parameter)) + 
-  # Use violin plot
-  geom_violin(position = 'dodge', alpha = .75, aes(factor(nstud))) +
-  facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
-  # Have mean line on top of it
-  stat_summary(fun.y = mean, geom="line", aes(group = parameter), size = .7)  +
-  scale_x_discrete('Number of studies in the third level') +
-  scale_y_continuous('Standiardized bias') +
-  scale_color_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
-                     values = c('#fdb462', '#bc80bd')) +
-  scale_fill_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
-                    values = c('#fdb462', '#bc80bd')) +
-  geom_hline(aes(yintercept = 0.95), colour = 'black', linetype = 'dashed') +
-  ggtitle('ST BIAS') +
-  theme_bw() +
-  theme(legend.position = 'bottom',
-        axis.text = element_text(face = 'bold', size = 9),
-        strip.background = element_rect(fill = 'white', colour = 'white'),
-        strip.text = element_text(face = 'bold', size = 12),
-        title = element_text(face = 'bold', size = 12),
-        legend.text = element_text(face = 'bold'),
-        plot.title = element_text(hjust = 0.5))
+# If we have data for each voxel
+if(AllVox){
+  # Violin plots without averaging over all voxels
+  BIASviolin %>% 
+    ungroup() %>%
+    # Column for activation YES/NO and turn into factor
+    mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
+    mutate(signalF = factor(signal, levels = c('null', 'activation'),
+                          labels = c('null data', '3% BOLD signal change'))) %>%
+    filter(signal == 'null') %>%
+    # create labels for facets
+    mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+           sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+           sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = '')) %>%
+    mutate(sigmaWLF = factor(sigmaWL, levels =
+     paste('sigma[W] ~ "=" ~ ',
+           round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
+    mutate(sigmaMLF = factor(sigmaML, levels =
+     paste('sigma[M] ~ "=" ~ ',
+           round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
+    # 4) plot the results
+    ggplot(., aes(x = factor(nstud), y = StBias, fill = parameter)) + 
+    # Use violin plot
+    geom_violin(position = 'dodge', alpha = .75, aes(factor(nstud))) +
+    facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
+    # Have mean line on top of it
+    stat_summary(fun.y = mean, geom="line", aes(group = parameter), size = .7)  +
+    scale_x_discrete('Number of studies in the third level') +
+    scale_y_continuous('Standiardized bias') +
+    scale_color_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
+                       values = c('#fdb462', '#bc80bd')) +
+    scale_fill_manual('Model', labels = c('random effects MA', 'mixed effects GLM'),
+                      values = c('#fdb462', '#bc80bd')) +
+    geom_hline(aes(yintercept = 0.95), colour = 'black', linetype = 'dashed') +
+    ggtitle('ST BIAS') +
+    theme_bw() +
+    theme(legend.position = 'bottom',
+          axis.text = element_text(face = 'bold', size = 9),
+          strip.background = element_rect(fill = 'white', colour = 'white'),
+          strip.text = element_text(face = 'bold', size = 12),
+          title = element_text(face = 'bold', size = 12),
+          legend.text = element_text(face = 'bold'),
+          plot.title = element_text(hjust = 0.5))
+}
 
 ##########################################################
 ################### ESTIMATED VARIANCE ###################
 ##########################################################
 
+# Need to update to ratio scenario!
+ratio <- FALSE
+if(ratio){
+  # Estimated variance components in the MA model
+  EstVar %>%
+    # Column for activation YES/NO and turn into factor
+    mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
+    mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
+    filter(parameter == 'ESTTAU') %>%
+    # Quick hack, need to solve this, but Tau is still squared and average of squares is not the same as square of averages....
+    mutate(SqAvgSE = sqrt(AvgSE)) %>%
+     ggplot(., aes(x = nstud, y = SqAvgSE, group = signalF)) +
+       geom_line(aes(colour = signalF), size = 1) +
+       facet_grid(sigmaW~sigmaM) +
+    theme_bw()
+  
+  # Estimated variance components in the GLM model
+  EstVar %>%
+    # Column for activation YES/NO and turn into factor
+    mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
+    mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
+    filter(parameter == 'IBMA.SE') %>%
+    ggplot(., aes(x = nstud, y = AvgSE, group = signalF)) +
+    geom_line(aes(colour = signalF), size = 1) +
+    facet_grid(sigmaW~sigmaM) +
+    theme_bw()
+  
+  
+  # Estimated variance components and trying to add true values
+  EstVar %>%
+    filter(parameter == 'IBMA.SE') %>%
+    ungroup() %>%
+    rowwise() %>%
+    mutate(TrueVAR_M = GetTrueSigmaM(sigmaW = sigmaW, nsub = 29, nstud = nstud, 
+                                     sigmaM = sigmaM)) %>%
+    mutate(TrueSE = sqrt(TrueVAR_M)) %>% 
+    tidyr::gather(key = 'type', value = 'value', AvgSE, TrueSE, factor_key = TRUE) %>%
+    dplyr::select(-parameter, -TrueVAR_M) %>%
+    # No difference in activation/null data, therefore only select the activation
+    filter(TrueD != 0) %>%
+    # create labels for facets
+    mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+           sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+           sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = '')) %>%
+    mutate(sigmaWLF = factor(sigmaWL, levels =
+                               paste('sigma[W] ~ "=" ~ ',
+         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
+    mutate(sigmaMLF = factor(sigmaML, levels =
+                               paste('sigma[M] ~ "=" ~ ',
+         round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
+    ggplot(., aes(x = nstud, y = value)) +
+    geom_line(aes(colour = type), size = 1) +
+    scale_color_brewer('type', labels = c('Average estimated SE', 'True (?) SE'),
+                       type = 'qual', palette = 2) +
+    facet_grid(sigmaWLF~sigmaMLF, labeller = label_parsed) +
+    ggtitle('Estimated versus true SE of parameter estimates',
+            subtitle = 'GLM only (FLAME1)') +
+    theme_bw() +
+    theme(legend.position = 'bottom',
+          axis.text = element_text(face = 'bold', size = 9),
+          strip.background = element_rect(fill = 'white', colour = 'white'),
+          strip.text = element_text(face = 'bold', size = 12),
+          title = element_text(face = 'bold', size = 12),
+          legend.text = element_text(face = 'bold'),
+          plot.title = element_text(hjust = 0))
+}
 
-# Estimated variance components in the MA model
-EstVar %>%
+
+#########################################################
+####################### CI LENGTH #######################
+#########################################################
+
+
+# Averaged over voxels: only for ratio 0.5 and GLM vs DL
+CIL %>%
+  # Select the ratio
+  filter(ratioBW == 0.50) %>%
+  # Select the comparison
+  filter(SCEN %in% comps[[1]]) %>%
   # Column for activation YES/NO and turn into factor
   mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
   mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
-  filter(parameter == 'ESTTAU') %>%
-  # Quick hack, need to solve this, but Tau is still squared and average of squares is not the same as square of averages....
-  mutate(SqAvgSE = sqrt(AvgSE)) %>%
-   ggplot(., aes(x = nstud, y = SqAvgSE, group = signalF)) +
-     geom_line(aes(colour = signalF), size = 1) +
-     facet_grid(sigmaW~sigmaM) +
-  theme_bw()
-
-# Estimated variance components in the GLM model
-EstVar %>%
-  # Column for activation YES/NO and turn into factor
-  mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
-  mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
-  filter(parameter == 'IBMA.SE') %>%
-  ggplot(., aes(x = nstud, y = AvgSE, group = signalF)) +
-  geom_line(aes(colour = signalF), size = 1) +
-  facet_grid(sigmaW~sigmaM) +
-  theme_bw()
-
-
-# Estimated variance components and trying to add true values
-EstVar %>%
-  filter(parameter == 'IBMA.SE') %>%
-  ungroup() %>%
-  rowwise() %>%
-  mutate(TrueVAR_M = GetTrueSigmaM(sigmaW = sigmaW, nsub = 29, nstud = nstud, 
-                                   sigmaM = sigmaM)) %>%
-  mutate(TrueSE = sqrt(TrueVAR_M)) %>% 
-  tidyr::gather(key = 'type', value = 'value', AvgSE, TrueSE, factor_key = TRUE) %>%
-  dplyr::select(-parameter, -TrueVAR_M) %>%
-  # No difference in activation/null data, therefore only select the activation
-  filter(TrueD != 0) %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
          sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
@@ -777,13 +687,19 @@ EstVar %>%
   mutate(sigmaMLF = factor(sigmaML, levels =
                              paste('sigma[M] ~ "=" ~ ',
                                    round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
-  ggplot(., aes(x = nstud, y = value)) +
-  geom_line(aes(colour = type), size = 1) +
-  scale_color_brewer('type', labels = c('Average estimated SE', 'True (?) SE'),
-                     type = 'qual', palette = 2) +
-  facet_grid(sigmaWLF~sigmaMLF, labeller = label_parsed) +
-  ggtitle('Estimated versus true SE of parameter estimates',
-          subtitle = 'GLM only (FLAME1)') +
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = AvgSimCIL)) + 
+  geom_line(aes(colour = parameter, linetype = signalF), size = 0.5) +
+  geom_point(aes(colour = parameter, fill = parameter), size = 1.05, 
+             show.legend = FALSE) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Average 95% CI length') +
+  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                     values = c('#fdb462', '#bc80bd')) +
+  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
+                    values = c('#fdb462', '#bc80bd')) +
+  scale_linetype_manual('', values = c('dashed', 'solid')) +
+  facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
   theme_bw() +
   theme(legend.position = 'bottom',
         axis.text = element_text(face = 'bold', size = 9),
@@ -792,6 +708,42 @@ EstVar %>%
         title = element_text(face = 'bold', size = 12),
         legend.text = element_text(face = 'bold'),
         plot.title = element_text(hjust = 0))
+
+
+##
+###############
+### Save Figures
+###############
+##
+
+# Bias
+ggsave(filename = paste(saveFig, 'bias_GLMDL.png', sep = ''), 
+       plot = GLMDLbias,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+ggsave(filename = paste(saveFig, 'bias_GLMHE.png', sep = ''), 
+       plot = GLMHEbias,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+ggsave(filename = paste(saveFig, 'bias_GLMREML.png', sep = ''), 
+       plot = GLMREMLbias,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+
+# Coverage
+ggsave(filename = paste(saveFig, 'bias_GLMDL.png', sep = ''), 
+       plot = GLMDLbias,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+ggsave(filename = paste(saveFig, 'bias_GLMHE.png', sep = ''), 
+       plot = GLMHEbias,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+ggsave(filename = paste(saveFig, 'bias_GLMREML.png', sep = ''), 
+       plot = GLMREMLbias,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+
+
+
+
+
+
+
 
 
 
