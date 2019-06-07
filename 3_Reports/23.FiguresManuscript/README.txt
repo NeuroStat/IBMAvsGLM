@@ -1,0 +1,1 @@
+Folder avg_bias contains the figures for the average, not standardized bias!

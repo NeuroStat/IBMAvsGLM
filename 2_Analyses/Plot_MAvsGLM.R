@@ -94,16 +94,16 @@ source('blind_MAvsGLM.R')
 
 # Which scenario do we analyze?
 # Go for 4: variable N and true value for MA = G.
-currentWD <- 4
+currentWD <- 5
 
 # Number of conficence intervals
 CIs <- c('MA-weightVar','GLM-t')
 NumCI <- length(CIs)
 
 # Data frame with number of simulations and subjects for current simulation
-info <- data.frame('Sim' = c(1,2,3,4),
-                   'nsim' = c(1000, 1000, 1000, 1000),
-                   'nsub' = rep(trueMCvalues('sim_act', 'nsub'),4))
+info <- data.frame('Sim' = c(1,2,3,4,5),
+                   'nsim' = c(1000, 1000, 1000, 1000, 1000),
+                   'nsub' = rep(trueMCvalues('sim_act', 'nsub'),5))
 nsim <- info[currentWD,'nsim']
 nsub <- info[currentWD,'nsub']
 
@@ -240,14 +240,16 @@ for(s in 1:length(SCEN)){
     summarise(AvgSimCIL = mean(AvCIlength, na.rm = TRUE)) %>%
     bind_rows(CIL, .)
   
-  ### STANDARDIZED BIAS AVERAGED OVER ALL VOXELS ###
+  ### STANDARDIZED BIAS AVERAGED OVER ONE VOXELS ###
   BiasData <- readRDS(file = 
     paste(LIR[[currentWD]], '/', SCEN[s], '/bias_Vox.rda', sep = ''))
   # Summarise over simulations
-  BIAS <- BiasData %>% group_by(parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
+  BIAS <- BiasData %>% 
+    dplyr::select(-sigmaB) %>%
+    group_by(parameter, SCEN, TrueD, ratioBW, sigmaW, sigmaM, nstud) %>%
     summarise(AvgBias = mean(Avbias, na.rm = TRUE),
               SDBias = sd(Avbias, na.rm = TRUE)) %>%
-    mutate(StBias = AvgBias/SDBias * 100) %>%
+    mutate(StBias = (AvgBias/SDBias)) %>%
     bind_rows(BIAS, .)
   
   ### STANDARDIZED BIAS AVERAGED OVER ALL SIMULATIONS ###
@@ -277,7 +279,11 @@ for(s in 1:length(SCEN)){
 #########################################################
 ###################### CI COVERAGE ######################
 #########################################################
-
+CoveragePlot %>%
+  filter(SCEN=='DL') %>%
+  filter(ratioBW==0.75) %>%
+  filter(nstud == 50) %>%
+  filter(sigmaW <= 14)
 
 #### FIRST SECTION: AVERAGED OVER ALL VOXELS AND THEN SIMULATIONS ####
 CoveragePlot <- CoveragePlot %>%
@@ -287,9 +293,9 @@ CoveragePlot <- CoveragePlot %>%
                           labels = c('null data', '3% BOLD signal change'))) %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+         sigmaWL = paste('sigma[S] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
          sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = ''),
-         ratioL = paste('sigma[B]/sigma[W] ~ "=" ~ ', ratioBW))
+         ratioL = paste('sigma[G]/sigma[S] ~ "=" ~ ', ratioBW))
 
 # Find the minimal Y-axis
 Y_min <- min(CoveragePlot$coverage)
@@ -330,7 +336,8 @@ for(s in 1:length(comps)){
                                    colours[colours$scen == 'GLM', 'cols'])) +
       scale_linetype_manual('', values = c('dashed', 'solid')) +
       geom_hline(aes(yintercept = 0.95), colour = 'black') +
-      ggtitle(bquote(sigma[B]/sigma[W] == .(ratioBW_vec[r]))) +
+      # ggtitle(bquote(sigma[B]/sigma[W] == .(ratioBW_vec[r]))) +
+      ggtitle(paste('R = ', ratioBW_vec[r], sep = '')) +
       # ggtitle(paste0('Ratio: ', ratioBW_vec[r])) +
       facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
       theme_bw() +
@@ -442,6 +449,14 @@ if(AllVox){
 ################### STANDARDIZED BIAS ###################
 #########################################################
 
+# Maximum bias for stand. effect sizes
+BIAS %>%
+  filter(SCEN != 'GLM') %>%
+  mutate(AbsBias = abs(StBias)) %>%
+  group_by(SCEN) %>%
+  summarise(maxAbsBias = max(AbsBias),
+            minBias = min(StBias))
+
 # Preparation for the bias plot
 BiasPlot <- BIAS %>%
   # Column for activation YES/NO and turn into factor
@@ -449,7 +464,7 @@ BiasPlot <- BIAS %>%
   mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+         sigmaWL = paste('sigma[S] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
          sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = ''))
 
 # Loop over the comparisons 
@@ -467,11 +482,10 @@ for(s in 1:length(comps)){
       # Select the comparison
       filter(SCEN %in% comps[[s]]) %>% 
       # 4) plot the results
-      ggplot(., aes(x = nstud, y = AvgBias)) + 
+      ggplot(., aes(x = nstud, y = StBias)) + 
       geom_line(aes(colour = parameter, linetype = signalF), size = 0.95) +
       geom_point(aes(colour = parameter, fill = parameter), size = 1.05, 
                  show.legend = FALSE) +
-      
       scale_x_continuous(ifelse(r == 2,
                          'Number of studies in the third level', '')) +
       scale_y_continuous(ifelse(r == 1, 'Standardized bias', '')) + 
@@ -490,7 +504,8 @@ for(s in 1:length(comps)){
                         values = c(colours[colours$scen == comps[[s]][2], 'cols'],
                                    colours[colours$scen == 'GLM', 'cols'])) +
       scale_linetype_manual('', values = c('dashed', 'solid')) +
-      ggtitle(bquote(sigma[B]/sigma[W] == .(ratioBW_vec[r]))) +
+      #ggtitle(bquote(sigma[B]/sigma[W] == .(ratioBW_vec[r]))) +
+      ggtitle(paste('R = ', ratioBW_vec[r], sep = '')) +
       facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
       theme_bw() +
       theme(legend.position = 'none',
@@ -499,7 +514,7 @@ for(s in 1:length(comps)){
             strip.text = element_text(face = 'bold', size = 12),
             title = element_text(face = 'bold', size = 12),
             legend.text = element_text(face = 'bold'),
-            plot.title = element_text(hjust = 0))
+            plot.title = element_text(hjust = 0.5))
 
     # Print the plot (otherwise it does not store the colours!)
     print(LoopPlot)
@@ -593,6 +608,14 @@ if(AllVox){
           plot.title = element_text(hjust = 0.5))
 }
 
+# Some numbers
+BIAS %>%
+  filter(TrueD == 1.02) %>%
+  filter(ratioBW == 0.75) %>%
+  filter(sigmaW < 15) %>%
+  filter(nstud == 50) %>%
+  filter(sigmaM > 8)
+
 ##########################################################
 ################### ESTIMATED VARIANCE ###################
 ##########################################################
@@ -669,48 +692,74 @@ if(ratio){
 ####################### CI LENGTH #######################
 #########################################################
 
-
-# Averaged over voxels: only for ratio 0.5 and GLM vs DL
-CIL %>%
-  # Select the ratio
-  filter(ratioBW == 0.50) %>%
-  # Select the comparison
-  filter(SCEN %in% comps[[1]]) %>%
-  # Column for activation YES/NO and turn into factor
+# Variable for plotting
+CILplot <- CIL %>%
   mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
-  mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
+  mutate(signalF = factor(signal, levels = c('null', 'activation'),
+                          labels = c('null data', '3% BOLD signal change'))) %>%
   # create labels for facets
   mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
-         sigmaWL = paste('sigma[W] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
-         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = '')) %>%
-  mutate(sigmaWLF = factor(sigmaWL, levels =
-                             paste('sigma[W] ~ "=" ~ ',
-                                   round(sqrt(trueMCvalues('sim_act', 'TrueSigma2W')), 0), sep = ''))) %>%
-  mutate(sigmaMLF = factor(sigmaML, levels =
-                             paste('sigma[M] ~ "=" ~ ',
-                                   round(sqrt(trueMCvalues('sim_act', 'TrueSigma2M')), 0), sep = ''))) %>%
-  # 4) plot the results
-  ggplot(., aes(x = nstud, y = AvgSimCIL)) + 
-  geom_line(aes(colour = parameter, linetype = signalF), size = 0.5) +
-  geom_point(aes(colour = parameter, fill = parameter), size = 1.05, 
-             show.legend = FALSE) +
-  scale_x_continuous('Number of studies in the third level') +
-  scale_y_continuous('Average 95% CI length') +
-  scale_color_manual('Model', labels = c('Random effects MA', 'FLAME'),
-                     values = c('#fdb462', '#bc80bd')) +
-  scale_fill_manual('Model', labels = c('Random effects MA', 'FLAME'),
-                    values = c('#fdb462', '#bc80bd')) +
-  scale_linetype_manual('', values = c('dashed', 'solid')) +
-  facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
-  theme_bw() +
-  theme(legend.position = 'bottom',
-        axis.text = element_text(face = 'bold', size = 9),
-        strip.background = element_rect(fill = 'white', colour = 'white'),
-        strip.text = element_text(face = 'bold', size = 12),
-        title = element_text(face = 'bold', size = 12),
-        legend.text = element_text(face = 'bold'),
-        plot.title = element_text(hjust = 0))
+         sigmaWL = paste('sigma[S] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = ''),
+         ratioL = paste('sigma[G]/sigma[S] ~ "=" ~ ', ratioBW))
 
+# Averaged over voxels: only for ratio 0.5 and GLM vs DL
+# For loop over the ratios
+for(s in 1:length(ratioBW_vec)){
+  LoopPlot <- 
+    CILplot %>%
+    mutate(sigmaWLF = factor(sigmaWL, levels = unique(sigmaWL))) %>%
+    mutate(sigmaMLF = factor(sigmaML, levels = unique(sigmaML))) %>%
+    # Select the ratio
+    filter(ratioBW == ratioBW_vec[s]) %>%
+    # Deselect the GLM approach
+    filter(parameter != 'IBMA.COPE') %>%
+    # Create the plot
+    ggplot(., aes(x = nstud, y = AvgSimCIL)) + 
+    geom_line(aes(colour = SCEN, linetype = signalF), size = 0.5) +
+    geom_point(aes(colour = SCEN, fill = SCEN), size = 0.7, 
+               show.legend = FALSE) +
+    scale_x_continuous('Number of studies in the third level') +
+    scale_y_continuous(ifelse(s == 1, 'Average 95% CI length', '')) +
+    scale_color_manual('random effects MA: ', 
+                       values = colours$cols) +
+    scale_linetype_manual('', values = c('dashed', 'solid')) +
+    facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
+    #ggtitle(bquote(sigma[G]/sigma[S] == .(ratioBW_vec[s]))) +
+    ggtitle(paste('R = ', ratioBW_vec[r], sep = '')) +
+    theme_bw() +
+    theme(legend.position = 'none',
+          axis.text = element_text(face = 'bold', size = 9, vjust = -1),
+          strip.background = element_rect(fill = 'white', colour = 'white'),
+          strip.text = element_text(face = 'bold', size = 12),
+          title = element_text(face = 'bold', size = 12),
+          legend.text = element_text(face = 'bold', size = 12),
+          plot.title = element_text(hjust = 0.5))
+  
+  # Print the plot (otherwise it does not store the colours!)
+  print(LoopPlot)
+  
+  # Wait for a second (otherwise objects are not created)
+  Sys.sleep(2)
+  
+  # Now assign to variable
+  assign(x = paste0('plot_CIL_ratio_', ratioBW_vec[s]), LoopPlot)
+  
+  
+  # Reset
+  rm(LoopPlot)
+}
+
+# Use cow package to get them into one plane: GLM vs DL
+legend_b <- get_legend(plot_CIL_ratio_0.5 + theme(legend.position="bottom"))
+prow <- plot_grid(plot_CIL_ratio_0.25, 
+                  plot_CIL_ratio_0.5, 
+                  plot_CIL_ratio_0.75, 
+                  labels = c("A", "B", "C"), ncol = 3, align = "hv",
+                  axis = 'tblr', hjust = -1, nrow = 1)
+CILplots <- 
+  plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
 
 ##
 ###############
@@ -740,10 +789,404 @@ ggsave(filename = paste(saveFig, 'ci_GLMREML.png', sep = ''),
        plot = GLMREMLci,
        width = 11.2, height = 9.18, units = 'in', scale = 1)
 
+# CI length
+ggsave(filename = paste(saveFig, 'ci_lengths.png', sep = ''), 
+       plot = CILplots,
+       width = 11.2, height = 9.18, units = 'in', scale = 1)
+
+
+##
+###############
+### Extra figures for discussion
+###############
+##
+
+###############################################################
+####################### SD COMPARISON #########################
+###############################################################
+
+# Read in the files
+SDcalcDat <-
+  readRDS(file = 
+      paste(LIR[[currentWD]], '/SDcalcDat.rda', sep = '')) %>%
+  # Remove obsolete column
+  dplyr::select(-sigmaB) %>%
+  # Select scenario
+  filter(BOLDC %in% c(0,3)) %>%
+# filter(ratioBW != 0.5) %>%
+  filter(nstud %in% c(5,50)) %>%
+  # Summarise over simulations
+  group_by(SCEN, ratioBW, sigmaW, sigmaM, nstud, BOLDC) %>%
+  summarise(AvgEst = mean(value, na.rm = TRUE),
+            SDEST = sd(value, na.rm = TRUE))
+
+# Prepare data frame
+SDPlot <- SDcalcDat %>%
+  # Create SD limits
+  mutate(sdLow = AvgEst - SDEST,
+         sdUp = AvgEst + SDEST) %>%
+  # create labels for facets
+  mutate(sigmaWL = paste('sigma[S] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = ''),
+         ratioL = paste('sigma[G]/sigma[S] ~ "=" ~ ', ratioBW))
+SDPlot$sigmaWLF <- factor(SDPlot$sigmaWL, levels = unique(SDPlot$sigmaWL))
+SDPlot$sigmaMLF <- factor(SDPlot$sigmaML, levels = unique(SDPlot$sigmaML))
+
+## --- 
+# Activation condition
+## --- 
+SDPlotAct <- filter(SDPlot, BOLDC == 3)
+
+# Set limits
+yMin <- min(SDPlotAct$sdLow)
+yMax <- max(SDPlotAct$sdUp)
+
+# Loop over the ratioBWs
+for(r in 1:length(ratioBW_vec)){
+  # First create variable
+  LoopPlot <- 
+    SDPlotAct %>%
+    mutate(nstudF = factor(nstud, levels = unique(nstud))) %>%
+    # Select the ratio
+    filter(ratioBW == ratioBW_vec[r]) %>% 
+    ggplot(., aes(x = nstudF, y = AvgEst, group = SCEN)) +
+    geom_point(aes(colour = SCEN), 
+               size = 0.7,
+               position = position_dodge(width = 0.5)) + 
+    geom_errorbar(aes(ymin = sdLow, ymax = sdUp, colour = SCEN),
+                  size = 0.8,
+                  width = 0.1,
+                  position = position_dodge(width = 0.5)) +
+    scale_color_manual('random effects MA (data with activation): ', 
+                       values = colours$cols) +
+    facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed,
+               scales = 'free_y') +
+    scale_x_discrete(ifelse(r == 2,
+                'Number of studies in the third level', '')) +
+    scale_y_continuous(ifelse(r == 1, 'estimated population effect size',
+                              ''),
+                       limits = c(yMin, yMax)) +
+    #ggtitle(bquote(sigma[G]/sigma[S] == .(ratioBW_vec[r]))) +
+    ggtitle(paste('R = ', ratioBW_vec[r], sep = '')) +
+    theme_bw() +
+    theme(legend.position = 'none',
+          axis.text = element_text(face = 'bold', size = 9),
+          strip.background = element_rect(fill = 'white', colour = 'white'),
+          strip.text = element_text(face = 'bold', size = 12),
+          title = element_text(face = 'bold', size = 12),
+          legend.text = element_text(face = 'bold'),
+          plot.title = element_text(hjust = 0.5))
+
+  # Print the plot (otherwise it does not store the colours!)
+  print(LoopPlot)
+  
+  # Wait for a second (otherwise objects are not created)
+  Sys.sleep(2)
+  
+  # Now assign to variable
+  assign(x = paste0('plot_CIlength_ratio_', ratioBW_vec[r]), LoopPlot)
+  
+  # Reset
+  rm(LoopPlot)
+}
+  
+# Combine plots using cow package
+legend_b <- get_legend(plot_CIlength_ratio_0.5 + theme(legend.position="bottom"))
+prow <- plot_grid(plot_CIlength_ratio_0.25, 
+                  plot_CIlength_ratio_0.5, 
+                  plot_CIlength_ratio_0.75, 
+                  labels = c("A", "B", "C"), ncol = 3, align = "hv",
+                  axis = 'tblr', hjust = -1, nrow = 1)
+SDlengths <- plot_grid(prow, legend_b, ncol = 1, 
+            rel_heights = c(1, 0.1));rm(legend_b, prow)
+
+# CI length
+ggsave(filename = paste(saveFig, 'SD_estimates.png', sep = ''), 
+       plot = SDlengths,
+       width = 10, height = 9, units = 'in', scale = 1)
+
+
+## --- 
+# Null condition
+## --- 
+SDPlotNull <- filter(SDPlot, BOLDC == 0)
+
+# Set limits
+yMin <- min(SDPlotNull$sdLow)
+yMax <- max(SDPlotNull$sdUp)
+
+# Loop over the ratioBWs
+for(r in 1:length(ratioBW_vec)){
+  # First create variable
+  LoopPlot <- 
+    SDPlotNull %>%
+    mutate(nstudF = factor(nstud, levels = unique(nstud))) %>%
+    # Select the ratio
+    filter(ratioBW == ratioBW_vec[r]) %>% 
+    ggplot(., aes(x = nstudF, y = AvgEst, group = SCEN)) +
+    geom_point(aes(colour = SCEN), 
+               size = 0.7,
+               position = position_dodge(width = 0.5)) + 
+    geom_errorbar(aes(ymin = sdLow, ymax = sdUp, colour = SCEN),
+                  size = 0.8,
+                  width = 0.1,
+                  position = position_dodge(width = 0.5)) +
+    scale_color_manual('random effects MA (null data): ', 
+                       values = colours$cols) +
+    facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed,
+               scales = 'free_y') +
+    scale_x_discrete(ifelse(r == 2,
+                            'Number of studies in the third level', '')) +
+    scale_y_continuous(ifelse(r == 1, 'estimated population effect size',
+                              ''),
+                       limits = c(yMin, yMax)) +
+    #ggtitle(bquote(sigma[G]/sigma[S] == .(ratioBW_vec[r]))) +
+    ggtitle(paste('R = ', ratioBW_vec[r], sep = '')) +
+    theme_bw() +
+    theme(legend.position = 'none',
+          axis.text = element_text(face = 'bold', size = 9),
+          strip.background = element_rect(fill = 'white', colour = 'white'),
+          strip.text = element_text(face = 'bold', size = 12),
+          title = element_text(face = 'bold', size = 12),
+          legend.text = element_text(face = 'bold'),
+          plot.title = element_text(hjust = 0.5))
+  
+  # Print the plot (otherwise it does not store the colours!)
+  print(LoopPlot)
+  
+  # Wait for a second (otherwise objects are not created)
+  Sys.sleep(2)
+  
+  # Now assign to variable
+  assign(x = paste0('plot_CIlength_ratio_', ratioBW_vec[r]), LoopPlot)
+  
+  # Reset
+  rm(LoopPlot)
+}
+
+# Combine plots using cow package
+legend_b <- get_legend(plot_CIlength_ratio_0.5 + theme(legend.position="bottom"))
+prow <- plot_grid(plot_CIlength_ratio_0.25, 
+                  plot_CIlength_ratio_0.5, 
+                  plot_CIlength_ratio_0.75, 
+                  labels = c("A", "B", "C"), ncol = 3, align = "hv",
+                  axis = 'tblr', hjust = -1, nrow = 1)
+SDlengths_null <- plot_grid(prow, legend_b, ncol = 1, 
+               rel_heights = c(1, 0.1));rm(legend_b, prow)
+
+# CI length
+ggsave(filename = paste(saveFig, 'SD_estimates_null.png', sep = ''), 
+       plot = SDlengths_null,
+       width = 10, height = 9, units = 'in', scale = 1)
+
+###############################################################
+####################### CI ILLUSTRATION #######################
+###############################################################
+
+# Read in the data
+illuCIL <- 
+  readRDS(file = 
+    paste(LIR[[currentWD]], '/illuCIL.rda', sep = '')) 
+
+# Comparison between two ratio's
+SelRatios <- c(0.25, 0.75)
+
+# SD over simulations for DL vs HE scenarios and ratio = 0.25 vs 0.75
+IlluValue <- illuCIL %>%
+  group_by(SCEN, ratioBW, sigmaW, nstud, TrueG) %>%
+  summarise(SDest = sd(value),
+            AvgEst = mean(value)) %>%
+  # Add simulation at position - 2
+  mutate(sim = -2)
+    # --> HE is more variable!
+
+# Not possible to set the limits: results not visible for ratio = 0.25!
+#xMin <- min(illuCIL$CI_lower)
+#xMax <- max(illuCIL$CI_upper)
+
+# For loop over both ratios
+for(r in 1:length(SelRatios)){
+  # Select the ratio
+  SelRatio <- SelRatios[r]
+  
+  # Create the plot
+  LoopPlot <- 
+  illuCIL %>%
+    filter(ratioBW == SelRatio) %>%
+    ggplot(aes(x = value, y = sim)) +
+    geom_point(size = 0.7) + 
+    geom_segment(aes(x = CI_lower, xend = CI_upper, 
+                     y = factor(sim), yend = factor(sim), 
+                     colour = factor(cov_IND)),
+                 size = 0.6) +
+    geom_vline(aes(xintercept = TrueG)) +
+    scale_x_continuous('') +
+    scale_y_discrete(ifelse(r == 1, 'simulation', ''),
+      breaks = c('1', '25', '50', '75', '100')) +
+    facet_grid(.~SCEN) +
+    scale_color_manual('Contains true parameter:', labels = c('NO',  'YES'),
+                       values = c('#d95f02', '#1b9e77')) +
+    geom_point(data = IlluValue %>%
+                 filter(ratioBW == SelRatio), 
+               aes(x = AvgEst, y = sim), 
+               shape = 23, size = 3, fill = 'black') +
+    #ggtitle(bquote(sigma[G]/sigma[S] == .(SelRatio))) +
+    ggtitle(paste('R = ', SelRatio, sep = '')) +
+    theme_bw() +
+    theme(legend.position = 'none',
+          axis.text = element_text(face = 'bold', size = 9),
+          strip.background = element_rect(fill = 'white', colour = 'white'),
+          strip.text = element_text(face = 'bold', size = 12),
+          title = element_text(face = 'bold', size = 12),
+          legend.text = element_text(face = 'bold', size = 12),
+          plot.title = element_text(hjust = 0.5))
+    
+  # Print the plot (otherwise it does not store the colours!)
+  print(LoopPlot)
+  
+  # Wait for a second (otherwise objects are not created)
+  Sys.sleep(2)
+  
+  # Now assign to variable
+  assign(x = paste0('plot_illuCIL_ratio_', SelRatio), LoopPlot)
+}
+
+# Combine plots using cow package
+legend_b <- get_legend(plot_illuCIL_ratio_0.25 + theme(legend.position="bottom"))
+prow <- plot_grid(plot_illuCIL_ratio_0.75,
+                  plot_illuCIL_ratio_0.25,
+                  labels = c("A", "B"), ncol = 2, align = "hv",
+                  axis = 'tblr', hjust = -1, nrow = 1)
+CI_illus <- plot_grid(prow, legend_b, ncol = 1, 
+                  rel_heights = c(1, 0.1));rm(legend_b, prow)
+
+
+# CI illustration
+ggsave(filename = paste(saveFig, 'CI_illusts.png', sep = ''), 
+       plot = CI_illus,
+       width = 7, height = 7, units = 'in', scale = 1)
 
 
 
+##
+###############
+### Figures for OHBM 2019
+###############
+##
 
+OHBMCov <- CoveragePlot %>%
+  # Column for activation YES/NO and turn into factor
+  mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
+  mutate(signalF = factor(signal, levels = c('null', 'activation'),
+                          labels = c('null data', '3% BOLD signal change'))) %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         sigmaWL = paste('sigma[S] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = ''),
+         ratioL = paste('sigma[G]/sigma[S] ~ "=" ~ ', ratioBW)) %>%
+  # Only have ratio = 0.5 and HE estimator
+  filter(SCEN %in% c('GLM', 'HE')) %>%
+  filter(ratioBW == 0.5)
+
+OHBMcovPlot <- OHBMCov %>%
+  mutate(sigmaWLF = factor(sigmaWL, levels = unique(sigmaWL))) %>%
+  mutate(sigmaMLF = factor(sigmaML, levels = unique(sigmaML))) %>%
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = coverage)) +
+  geom_line(aes(colour = parameter, linetype = signalF), size = 0.9) +
+  geom_point(aes(colour = parameter, fill = parameter), size = 0.95, show.legend = FALSE) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Empirical coverage')+
+  scale_color_manual('Model',
+                     labels = c('random effects MA', 'mixed effects GLM'),
+                     values = c('#8da0cb', '#66c2a5')) +
+  scale_fill_manual('Model',
+                     labels = c('random effects MA', 'mixed effects GLM'),
+                     values = c('#8da0cb', '#66c2a5')) +
+  scale_linetype_manual('', values = c('dashed', 'solid')) +
+  geom_hline(aes(yintercept = 0.95), colour = 'black') +
+  ggtitle(bquote(sigma[G]^2/sigma[S]^2 == 0.5)) +
+  facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
+  theme_bw() +
+  theme(legend.position = 'none',
+        axis.text = element_text(face = 'bold', size = 9, vjust = -1),
+        strip.background = element_rect(fill = 'white', colour = 'white'),
+        strip.text = element_text(face = 'bold', size = 12),
+        title = element_text(face = 'bold', size = 12),
+        legend.text = element_text(face = 'bold', size = 12),
+        plot.title = element_text(hjust = 0.5))
+OHBMcovPlot
+
+
+# Preparation for the bias plot (here we use average bias instead of standardized!)
+OHBMbias <- BIAS %>%
+  # Column for activation YES/NO and turn into factor
+  mutate(signal = ifelse(TrueD == 0, 'null', 'activation')) %>%
+  mutate(signalF = factor(signal, levels = c('null', 'activation'))) %>%
+  # create labels for facets
+  mutate(d = paste('d ~ "=" ~ ', TrueD, sep = ''),
+         sigmaWL = paste('sigma[S] ~ "=" ~ ', round(sigmaW, 0), sep = ''),
+         sigmaML = paste('sigma[M] ~ "=" ~ ', round(sigmaM, 0), sep = ''),
+         ratioL = paste('sigma[G]/sigma[S] ~ "=" ~ ', ratioBW)) %>%
+  # Only have ratio = 0.5 and HE estimator
+  filter(SCEN %in% c('GLM', 'HE')) %>%
+  filter(ratioBW == 0.5)
+
+OHBMbiasPlot <- OHBMbias %>%
+  mutate(sigmaWLF = factor(sigmaWL, levels = unique(sigmaWL))) %>%
+  mutate(sigmaMLF = factor(sigmaML, levels = unique(sigmaML))) %>%    
+  # 4) plot the results
+  ggplot(., aes(x = nstud, y = AvgBias)) + 
+  geom_line(aes(colour = parameter, linetype = signalF), size = 0.95) +
+  geom_point(aes(colour = parameter, fill = parameter), size = 1.05, 
+             show.legend = FALSE) +
+  scale_x_continuous('Number of studies in the third level') +
+  scale_y_continuous('Standardized bias') + 
+  scale_color_manual('Model',
+                     labels = c('random effects MA', 'mixed effects GLM'),
+                     values = c('#8da0cb', '#66c2a5')) +
+  scale_fill_manual('Model',
+                    labels = c('random effects MA', 'mixed effects GLM'),
+                    values = c('#8da0cb', '#66c2a5')) +
+  scale_linetype_manual('', values = c('dashed', 'solid')) +
+  ggtitle(bquote(sigma[G]^2/sigma[S]^2 == 0.5)) +
+  facet_grid(sigmaWLF ~ sigmaMLF, labeller = label_parsed) +
+  theme_bw() +
+  theme(legend.position = 'none',
+        axis.text = element_text(face = 'bold', size = 9, vjust = -1),
+        strip.background = element_rect(fill = 'white', colour = 'white'),
+        strip.text = element_text(face = 'bold', size = 12),
+        title = element_text(face = 'bold', size = 12),
+        legend.text = element_text(face = 'bold', size = 12),
+        plot.title = element_text(hjust = 0.5))
+OHBMbiasPlot
+
+# Create figure with both plots
+legend_b <- get_legend(OHBMcovPlot + theme(legend.position="bottom"))
+prow <- plot_grid(OHBMbiasPlot,
+                  OHBMcovPlot,
+                  labels = c("A", "B"), ncol = 2, align = "hv",
+                  axis = 'tblr', hjust = -1, nrow = 1)
+OHBMplots <- plot_grid(prow, legend_b, ncol = 1, 
+              rel_heights = c(1, 0.1))
+
+# Save figures
+ggsave(filename = 
+         '/Users/hanbossier/Dropbox/PhD/Events/OHBM2019/Poster/Figures/cov_OHBM.png', 
+       plot = OHBMcovPlot,
+       width = 7, height = 9, units = 'in', scale = 1)
+
+ggsave(filename = 
+  '/Users/hanbossier/Dropbox/PhD/Events/OHBM2019/Poster/Figures/bias_OHBM.png', 
+       plot = OHBMbiasPlot,
+       width = 7, height = 9, units = 'in', scale = 1)
+
+
+# Both in one figure (shared legend)
+ggsave(filename = 
+         '/Users/hanbossier/Dropbox/PhD/Events/OHBM2019/Poster/Figures/OHBM_bias_cov.png', 
+       plot = OHBMplots,
+       width = 11, height = 9, units = 'in', scale = 1)
 
 
 

@@ -154,7 +154,10 @@ trueMCvalues <- function(ID = c('sim_act'), keyword, ratioBW = 0.5){
       # I2 <- c(0, 62.61, 87.28) / 100
     I2 <- c(0, 50.00, 90.00) / 100
     # Work this out and we get:
-    TrueSigma2M <- (I2*TrueSigma2W + I2*TrueSigma2B) / (1 - I2)
+    #TrueSigma2M <- (I2*TrueSigma2W + I2*TrueSigma2B) / (1 - I2)
+    # But what if we define the I2 as: TrueSigma2M / (TrueSigma2M + TrueSigma2B)
+    #TrueSigma2M <- (I2*TrueSigma2B) / (1 - I2)
+    TrueSigma2M <- (I2*design_factor %*%TrueSigma2W + I2*TrueSigma2B) / (1 - I2)
       # CHECK: TrueSigma2M / (TrueSigma2M + TrueSigma2B + TrueSigma2W)
   }
 

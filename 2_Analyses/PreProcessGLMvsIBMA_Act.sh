@@ -1,14 +1,19 @@
 #!/bin/sh
 #
 #
-#PBS -N HEPreProcessAct
-#PBS -o output/output.file
-#PBS -e error/error.file
+#PBS -N DLPreProcess
+#PBS -o output/
+#PBS -e error/
 #PBS -m a
 #PBS -l walltime=05:00:00
 #PBS -l vmem=20GB
 #
 
+#----------------------------------------------------#
+# SWAP CLUSTERS!
+# module swap cluster/delcatty
+module swap cluster/golett
+#----------------------------------------------------#
 
 #----------------------------------------------------#
 # MODULES TO LOAD IN
@@ -30,12 +35,12 @@ cd $srcdir
 # CHOOSE YOUR SCENARIO: ESTIMATOR FOR BETWEEN-STUDY
   # HETEROGENEITY IN CASE OF STNADARDIZED EFFECT SIZES
   # OPTIONS: GLM, DL, HE or REML
-SCEN="HE"
+SCEN="DL"
 #----------------------------------------------------#
 
 #----------------------------------------------------#
 # GO TIME: RUN THAT THING
-Rscript PreProcessGLMvsIBMA_Act.R "HPC" "/user/data/gent/gvo000/gvo00022/vsc40728/IBMAvsGLM/Estimators/" "$SCEN" 
+Rscript PreProcessGLMvsIBMA_Act.R "HPC" "/user/scratch/gent/gvo000/gvo00022/vsc40728/IBMAvsMA/Results/" "$SCEN" 
 #----------------------------------------------------#
 
 

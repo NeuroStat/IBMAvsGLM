@@ -56,7 +56,7 @@ MACHINE <- try(as.character(input)[3], silent=TRUE)
 if(is.na(MACHINE)){
   MACHINE <- 'MAC'
   K <- 990
-  SCEN <- 'REML'
+  SCEN <- 'HE'
 }
 # DataWrite directory: where all temp FSL files are written to
 DataWrite <- try(as.character(input)[4], silent=TRUE)
@@ -395,11 +395,11 @@ for(p in 1:NumPar){
     #----- 2 ----#
     ### Design.con
     fileCon <- file(paste(DataWrite,"/design.con", sep=""))
-    writeLines('/ContrastName1	Group Average
-               /NumWaves	1
-               /NumContrasts	1
-               /PPheights		1.000000e+00
-               /RequiredEffect		5.034
+    writeLines('/ContrastName1 Group Average
+               /NumWaves 1
+               /NumContrasts 1
+               /PPheights 1.000000e+00
+               /RequiredEffect 5.034
                
                /Matrix
                1.000000e+00
